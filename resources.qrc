@@ -1,0 +1,8 @@
+<RCC>
+    <qresource prefix="/plugins/OSRM" >
+        <file>img/icon.png</file>
+		<file>img/icon_batchroute.png</file>
+		<file>img/icon_table.png</file>
+		<file>img/icon_access.png</file>
+    </qresource>
+</RCC>

@@ -1,0 +1,41 @@
+# This file contains metadata for your plugin. Since 
+# version 2.0 of QGIS this is the proper way to supply 
+# information about a plugin. The old method of 
+# embedding metadata in __init__.py will 
+# is no longer supported since version 2.0.
+
+# This file should be included when you package your plugin.
+# Mandatory items:
+
+[general]
+name=Routing with OSRM
+qgisMinimumVersion=2.8
+description=Display your routing results from OSRM
+version=0.0.1-rc1
+author=mthh
+email=matthieu.viry@ums-riate.org
+
+about= OSRM (Open Source Routing Machine) plugin for QGIS, allowing to query a local/distant OSRM server API in order to display route(s), draw accessibility isochrones and export time-distance matrix.
+
+tracker=https://mthh.github.com/osrm-qgis-plugin/issues
+repository=https://mthh.github.com/osrm-qgis-plugin/
+
+# End of mandatory metadata
+
+# Recommended items:
+
+# Uncomment the following line and add your changelog:
+#changelog=
+
+# Tags are comma separated with spaces allowed
+tags=Routing, OpenStreetMap, Open Source Routing Machine, accessibility, isochrone, OSM, OSRM
+
+homepage=https://mthh.github.com/osrm-qgis-plugin/
+category=Web
+icon=icon.png
+# experimental flag
+experimental=True
+
+# deprecated flag (applies to the whole plugin, not just a single version)
+deprecated=False
+

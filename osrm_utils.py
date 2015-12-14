@@ -8,7 +8,9 @@ from PyQt4.QtGui import QColor, QFileDialog, QDialog
 from PyQt4.QtCore import QSettings, QFileInfo
 from qgis.core import (
     QgsGeometry, QgsPoint, QgsCoordinateReferenceSystem, QgsRendererCategoryV2,
-    QgsCoordinateTransform, QgsCategorizedSymbolRendererV2, QgsSymbolV2
+    QgsCoordinateTransform, QgsCategorizedSymbolRendererV2, QgsSymbolV2,
+    QgsFillSymbolV2, QgsVectorGradientColorRampV2,
+    QgsVectorGradientColorRampV2, QgsGraduatedSymbolRendererV2
     )
 from qgis.gui import QgsEncodingFileDialog
 from matplotlib.pyplot import contourf
@@ -427,52 +429,51 @@ def get_search_frame(point, max_time):
     return xmin, ymin, xmax, ymax
 
 
-def prep_polygon_symbol(levels, layer_geom_type):
-    nb_level = len(levels)
-    print(nb_level)
-    colors = get_isochrones_colors(nb_level)
-    cat_symbols = []
-    for i in xrange(nb_level):
-        value = levels[i]
-        color = QColor(colors[i])
-        symbol = QgsSymbolV2.defaultSymbol(layer_geom_type)
-        symbol.setColor(color)
-        symbol.setAlpha(0.9)
-        cat_symb = QgsRendererCategoryV2(value, symbol, str(levels[i]))
-        cat_symbols.append(cat_symb)
-    return QgsCategorizedSymbolRendererV2('max', cat_symbols)
-
-
-def get_isochrones_colors(nb_features):
-    return {3: ('#66bd63',
-                '#fee08b', '#f46d43'),
-            4: ('#1a9850', '#a6d96a',
-                '#fee08b', '#f46d43'),
-            5: ('#1a9850', '#66bd63',
-                '#ffffbf', '#fc8d59', '#d73027'),
-            6: ('#1a9850', '#66bd63', '#d9ef8b',
-                '#fee08b', '#fc8d59', '#d73027'),
-            7: ('#1a9850', '#66bd63', '#d9ef8b', '#ffffbf',
-                '#fee08b', '#fc8d59', '#d73027'),
-            8: ('#1a9850', '#66bd63', '#a6d96a', '#d9ef8b',
-                '#fee08b', '#fdae61', '#f46d43', '#d73027'),
-            9: ('#1a9850', '#66bd63', '#a6d96a', '#d9ef8b', '#ffffbf',
-                '#fee08b', '#fdae61', '#f46d43', '#d73027'),
-            10: ('#006837', '#1a9850', '#66bd63', '#a6d96a', '#d9ef8b',
-                 '#fee08b', '#fdae61', '#f46d43', '#d73027', '#a50026'),
-            11: ('#006837', '#1a9850', '#66bd63', '#a6d96a', '#d9ef8b',
-                 '#ffffbf', '#fee08b', '#fdae61', '#f46d43', '#d73027',
-                 '#a50026'),
-            12: ('#006837', '#1a9850', '#66bd63', '#a6d96a', '#d9ef8b',
-                 '#e7ef88', '#ffffbf', '#fee08b', '#fdae61', '#f46d43',
-                 '#d73027', '#a50026'),
-            13: ('#006837', '#1a9850', '#66bd63', '#a6d96a', '#d9ef8b',
-                 '#e7ef88', '#ffffbf', '#fee08b', '#fdae61', '#f46d43',
-                 '#d73027', '#bb2921', '#a50026'),
-            14: ('#006837', '#1a9850', '#66bd63', '#a6d96a', '#d9ef8b',
-                 '#e7ef88', '#ffffbf', '#fff6a0', '#fee08b', '#fdae61',
-                 '#f46d43', '#d73027', '#bb2921', '#a50026')
-            }[nb_features]
+#def prep_polygon_symbol(levels, layer_geom_type):
+#    nb_level = len(levels)
+#    print(nb_level)
+#    colors = get_isochrones_colors(nb_level)
+#    cat_symbols = []
+#    for i in xrange(nb_level):
+#        value = levels[i]
+#        color = QColor(colors[i])
+#        symbol = QgsSymbolV2.defaultSymbol(layer_geom_type)
+#        symbol.setColor(color)
+#        symbol.setAlpha(0.9)
+#        cat_symb = QgsRendererCategoryV2(value, symbol, str(levels[i]))
+#        cat_symbols.append(cat_symb)
+#    return QgsCategorizedSymbolRendererV2('max', cat_symbols)
+#
+#def get_isochrones_colors(nb_features):
+#    return {3: ('#66bd63',
+#                '#fee08b', '#f46d43'),
+#            4: ('#1a9850', '#a6d96a',
+#                '#fee08b', '#f46d43'),
+#            5: ('#1a9850', '#66bd63',
+#                '#ffffbf', '#fc8d59', '#d73027'),
+#            6: ('#1a9850', '#66bd63', '#d9ef8b',
+#                '#fee08b', '#fc8d59', '#d73027'),
+#            7: ('#1a9850', '#66bd63', '#d9ef8b', '#ffffbf',
+#                '#fee08b', '#fc8d59', '#d73027'),
+#            8: ('#1a9850', '#66bd63', '#a6d96a', '#d9ef8b',
+#                '#fee08b', '#fdae61', '#f46d43', '#d73027'),
+#            9: ('#1a9850', '#66bd63', '#a6d96a', '#d9ef8b', '#ffffbf',
+#                '#fee08b', '#fdae61', '#f46d43', '#d73027'),
+#            10: ('#006837', '#1a9850', '#66bd63', '#a6d96a', '#d9ef8b',
+#                 '#fee08b', '#fdae61', '#f46d43', '#d73027', '#a50026'),
+#            11: ('#006837', '#1a9850', '#66bd63', '#a6d96a', '#d9ef8b',
+#                 '#ffffbf', '#fee08b', '#fdae61', '#f46d43', '#d73027',
+#                 '#a50026'),
+#            12: ('#006837', '#1a9850', '#66bd63', '#a6d96a', '#d9ef8b',
+#                 '#e7ef88', '#ffffbf', '#fee08b', '#fdae61', '#f46d43',
+#                 '#d73027', '#a50026'),
+#            13: ('#006837', '#1a9850', '#66bd63', '#a6d96a', '#d9ef8b',
+#                 '#e7ef88', '#ffffbf', '#fee08b', '#fdae61', '#f46d43',
+#                 '#d73027', '#bb2921', '#a50026'),
+#            14: ('#006837', '#1a9850', '#66bd63', '#a6d96a', '#d9ef8b',
+#                 '#e7ef88', '#ffffbf', '#fff6a0', '#fee08b', '#fdae61',
+#                 '#f46d43', '#d73027', '#bb2921', '#a50026')
+#            }[nb_features]
 
 ###############################################################################
 #

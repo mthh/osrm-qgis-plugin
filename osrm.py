@@ -21,8 +21,8 @@
  ***************************************************************************/
 """
 from qgis.core import *
-from qgis.utils import *
-from qgis.gui import *
+from qgis.utils import iface
+from qgis.gui import QgsMapToolEmitPoint, QgsMapLayerProxyModel
 
 from PyQt4.QtCore import (
     QTranslator, qVersion, QCoreApplication,
@@ -41,7 +41,7 @@ from osrm_dialog import (
     )
 
 from .osrm_utils import *
-from codecs import open
+from codecs import open as codecs_open
 from sys import version_info
 from httplib import HTTPConnection
 import os.path
@@ -751,7 +751,7 @@ class OSRM(object):
             table = (table / 600.0).round(1)
 
         try:
-            out_file = open(self.filename, 'w', encoding=self.encoding)
+            out_file = codecs_open(self.filename, 'w', encoding=self.encoding)
             writer = csv.writer(out_file, lineterminator='\n')
             if self.dlg.checkBox_flatten.isChecked():
                 table = table.ravel()
@@ -845,7 +845,16 @@ class OSRM(object):
         data_provider.addFeatures(features[::-1])
         self.nb_isocr += 1
 
-        renderer = prep_polygon_symbol(levels, isochrone_layer.geometryType())
+        symbol =  QgsFillSymbolV2()
+        colorRamp = QgsVectorGradientColorRampV2.create(
+            {'color1' : '#006837',
+             'color2' : '#bb2921',
+             'stops' : '0.5;#fff6a0'})
+        renderer = QgsGraduatedSymbolRendererV2.createRenderer(
+            isochrone_layer, 'max', len(levels),
+            QgsGraduatedSymbolRendererV2.EqualInterval,
+            symbol, colorRamp)
+
         isochrone_layer.setRendererV2(renderer)
         isochrone_layer.setLayerTransparency(10)
         self.iface.messageBar().clearWidgets()

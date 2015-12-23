@@ -61,6 +61,7 @@ class OSRM(object):
             application at run time.
         :type iface: QgsInterface
         """
+        self.dlg = None
         # Save reference to the QGIS interface
         self.iface = iface
         self.canvas = iface.mapCanvas()
@@ -80,11 +81,6 @@ class OSRM(object):
             if qVersion() > '4.3.3':
                 QCoreApplication.installTranslator(self.translator)
 
-        # Create the dialog (after translation) and keep reference
-        self.dlg_route = OSRMDialog()
-        self.dlg_table = OSRM_table_Dialog()
-        self.dlg_access = OSRM_access_Dialog()
-        self.dlg_batch_route = OSRM_batch_route_Dialog()
         # Declare instance attributes
         self.actions = []
         self.menu = self.tr(u'&Routing with OSRM')
@@ -258,16 +254,17 @@ class OSRM(object):
         self.canvas.setMapTool(self.destinationEmit)
 
     def reverse_OD(self):
-        if len(self.dlg.lineEdit_xyO.text()) > 0 \
-                and len(self.dlg.lineEdit_xyD.text()) > 0:
+        try:
             tmp = self.dlg.lineEdit_xyO.text()
             tmp1 = self.dlg.lineEdit_xyD.text()
             self.dlg.lineEdit_xyD.setText(str(tmp))
             self.dlg.lineEdit_xyO.setText(str(tmp1))
+        except Exception as err:
+            print(err)
 
     def clear_all_single(self):
-        self.dlg_route.lineEdit_xyO.setText('')
-        self.dlg_route.lineEdit_xyD.setText('')
+        self.dlg.lineEdit_xyO.setText('')
+        self.dlg.lineEdit_xyD.setText('')
         for layer in QgsMapLayerRegistry.instance().mapLayers():
             if 'route_osrm' in layer \
                     or 'instruction_osrm' in layer \
@@ -316,8 +313,8 @@ class OSRM(object):
     @pyqtSlot()
     def get_route(self):
         self._check_host()
-        origin = self.dlg_route.lineEdit_xyO.text()
-        destination = self.dlg_route.lineEdit_xyD.text()
+        origin = self.dlg.lineEdit_xyO.text()
+        destination = self.dlg.lineEdit_xyD.text()
         if len(origin) < 4 or len(destination) < 4:
             self.iface.messageBar().pushMessage("Error",
                                                 "No coordinates selected!",
@@ -329,10 +326,13 @@ class OSRM(object):
         except:
             self.iface.messageBar().pushMessage("Error", "Invalid coordinates",
                                                 duration=10)
-        url = ''.join(["/viaroute?loc={},{}&loc={},{}".format(yo, xo, yd, xd),
-                       "&instructions={}&alt={}".format(
-            str(self.dlg_route.checkBox_instruction.isChecked()).lower(),
-            str(self.dlg_route.checkBox_alternative.isChecked()).lower())])
+            return -1
+        url = ''.join([
+            "/viaroute?loc={},{}&loc={},{}".format(yo, xo, yd, xd),
+            "&instructions={}&alt={}".format(
+                str(self.dlg.checkBox_instruction.isChecked()).lower(),
+                str(self.dlg.checkBox_alternative.isChecked()).lower())
+                ])
 
         try:
             self.conn = HTTPConnection(self.host)
@@ -371,7 +371,7 @@ class OSRM(object):
         self.iface.setActiveLayer(osrm_route_layer)
         self.iface.zoomToActiveLayer()
 
-        if self.dlg_route.checkBox_instruction.isChecked():
+        if self.dlg.checkBox_instruction.isChecked():
             pr_instruct, instruct_layer = self.prep_instruction()
             QgsMapLayerRegistry.instance().addMapLayer(instruct_layer)
             self.iface.setActiveLayer(instruct_layer)
@@ -380,15 +380,16 @@ class OSRM(object):
                 and 'alternative_geometries' in self.parsed:
             self.nb_alternative = len(self.parsed['alternative_geometries'])
             self.get_alternatives(provider)
-            if self.dlg_route.checkBox_instruction.isChecked():
+            if self.dlg.checkBox_instruction.isChecked():
                 for i in range(self.nb_alternative):
                     pr_instruct, instruct_layer = \
                        self.prep_instruction(i + 1, pr_instruct, instruct_layer)
         return
 
+    @pyqtSlot()
     def run_route(self):
         """Run the window to compute a single viaroute"""
-        self.dlg = self.dlg_route
+        self.dlg = OSRMDialog()
         self.origin = None
         self.destination = None
         self.nb_route = 0
@@ -489,11 +490,11 @@ class OSRM(object):
                 ])
             provider.addFeatures([fet])
 
+    @pyqtSlot()
     def run_batch_route(self):
         """Run the window to compute many viaroute"""
         self.nb_done = 0
-        self.dlg = self.dlg_batch_route
-
+        self.dlg = OSRM_batch_route_Dialog()
         self.dlg.ComboBoxOrigin.setFilters(
             QgsMapLayerProxyModel.PointLayer)
         self.dlg.ComboBoxDestination.setFilters(
@@ -502,13 +503,6 @@ class OSRM(object):
             QgsMapLayerProxyModel.NoGeometry)
         self.dlg.ComboBoxCsv.layerChanged.connect(
             self._set_layer_field_combo)
-
-        self.dlg.check_two_layers.stateChanged.connect(
-            lambda st: self.dlg.check_csv.setCheckState(0) if (
-                st == 2 and self.dlg.check_csv.isChecked()) else None)
-        self.dlg.check_csv.stateChanged.connect(
-            lambda st: self.dlg.check_two_layers.setCheckState(0) if (
-                st == 2 and self.dlg.check_two_layers.isChecked()) else None)
 
         self.dlg.pushButton_about.clicked.connect(self.print_about)
         self.dlg.pushButtonBrowse.clicked.connect(self.output_dialog_geo)
@@ -655,6 +649,7 @@ class OSRM(object):
             self.return_batch_route(features)
             return
 
+    @pyqtSlot()
     def return_batch_route(self, features):
         """Save and/or display the routes retrieved"""
         osrm_batch_route_layer = QgsVectorLayer(
@@ -691,22 +686,15 @@ class OSRM(object):
                 osrm_batch_route_layer.id())
         self.iface.messageBar().clearWidgets()
 
+    @pyqtSlot()
     def run_table(self):
         """Run the window for the table function"""
-        self.dlg = self.dlg_table
-        self.dlg.pushButton_fetch.setDisabled(True)
+        self.dlg = OSRM_table_Dialog()
         self.dlg.comboBox_layer.setFilters(QgsMapLayerProxyModel.PointLayer)
         self.dlg.pushButton_about.clicked.connect(self.print_about)
         self.dlg.pushButton_browse.clicked.connect(self.output_dialog)
         self.dlg.pushButton_fetch.clicked.connect(self.get_table)
         self.dlg.show()
-        self.dlg_table.comboBox_layer.layerChanged.connect(
-            lambda x: self.dlg_table.comboBox_idfield.setLayer(x)
-            )
-        self.dlg_table.lineEdit_output.textChanged.connect(
-            lambda x: self.dlg.pushButton_fetch.setEnabled(True)
-            if '.csv' in x else self.dlg.pushButton_fetch.setDisabled(True)
-            )
 
     @pyqtSlot()
     def get_table(self):
@@ -723,10 +711,8 @@ class OSRM(object):
             coords = [ft.geometry().asPoint() for ft in s_layer.getFeatures()]
 
         field = self.dlg.comboBox_idfield.currentField()
-#        print(self.encoding)
+
         if field != '':
-#            for ft in s_layer.getFeatures():
-#                print(ft.attribute(field))
             ids = [ft.attribute(field) for ft in s_layer.getFeatures()]
         else:
             ids = [ft.id() for ft in s_layer.getFeatures()]
@@ -780,9 +766,10 @@ class OSRM(object):
                 'OSRM-plugin error report :\n {}'.format(err),
                 level=QgsMessageLog.WARNING)
 
+    @pyqtSlot()
     def run_accessibility(self):
         """Run the window for making accessibility isochrones"""
-        self.dlg = self.dlg_access
+        self.dlg = OSRM_access_Dialog()
         self.originEmit = QgsMapToolEmitPoint(self.canvas)
         self.nb_isocr = 0
         QObject.connect(
@@ -878,7 +865,7 @@ class OSRM(object):
                    ['mapped_coordinate'][::-1]) for pt in coords_grid]))
         origin_pt = h_locate(
             point, conn, self.http_header)['mapped_coordinate'][::-1]
-#        chunked_liste = chunk_it(coords, 99)
+
         self.progress.setValue(0.2)
         try:
             times = np.ndarray([])
@@ -1003,4 +990,3 @@ class OSRM(object):
 
 # TODO :
 # - ensure that the MapToolEmitPoint is unset when the plugin window is closed
-# - use a graduated layer for displaying the isochrones

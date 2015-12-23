@@ -49,13 +49,19 @@ class OSRMDialog(QtGui.QDialog, FORM_CLASS):
         # #widgets-and-dialogs-with-auto-connect
         self.setupUi(self)
 
-
 class OSRM_table_Dialog(QtGui.QDialog, FORM_CLASS_t):
     def __init__(self, parent=None):
         """Constructor."""
         super(OSRM_table_Dialog, self).__init__(parent)
         self.setupUi(self)
-
+        self.pushButton_fetch.setDisabled(True)
+        self.comboBox_layer.layerChanged.connect(
+            lambda x: self.comboBox_idfield.setLayer(x)
+            )
+        self.lineEdit_output.textChanged.connect(
+            lambda x: self.pushButton_fetch.setEnabled(True)
+            if '.csv' in x else self.pushButton_fetch.setDisabled(True)
+            )
 
 class OSRM_access_Dialog(QtGui.QDialog, FORM_CLASS_a):
     def __init__(self, parent=None):
@@ -69,3 +75,9 @@ class OSRM_batch_route_Dialog(QtGui.QDialog, FORM_CLASS_b):
         """Constructor."""
         super(OSRM_batch_route_Dialog, self).__init__(parent)
         self.setupUi(self)
+        self.check_two_layers.stateChanged.connect(
+            lambda st: self.check_csv.setCheckState(0) if (
+                st == 2 and self.check_csv.isChecked()) else None)
+        self.check_csv.stateChanged.connect(
+            lambda st: self.check_two_layers.setCheckState(0) if (
+                st == 2 and self.check_two_layers.isChecked()) else None)

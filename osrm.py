@@ -796,7 +796,7 @@ class OSRM(object):
         - render the polygon.
         """
         self._check_host()
-        self.max_points = 480
+        self.max_points = 580
         origin = self.dlg.lineEdit_xyO.text()
         if len(origin) < 4:
             self.iface.messageBar().pushMessage(
@@ -832,15 +832,32 @@ class OSRM(object):
         data_provider.addFeatures(features[::-1])
         self.nb_isocr += 1
 
-        symbol =  QgsFillSymbolV2()
-        colorRamp = QgsVectorGradientColorRampV2.create(
-            {'color1' : '#006837',
-             'color2' : '#bb2921',
-             'stops' : '0.5;#fff6a0'})
-        renderer = QgsGraduatedSymbolRendererV2.createRenderer(
-            isochrone_layer, 'max', len(levels),
-            QgsGraduatedSymbolRendererV2.EqualInterval,
-            symbol, colorRamp)
+#        symbol =  QgsFillSymbolV2()
+#        colorRamp = QgsVectorGradientColorRampV2.create(
+#            {'color1' : '#006837',
+#             'color2' : '#bb2921',
+#             'stops' : '0.5;#fff6a0'})
+#        renderer = QgsGraduatedSymbolRendererV2.createRenderer(
+#            isochrone_layer, 'max', len(levels),
+#            QgsGraduatedSymbolRendererV2.EqualInterval,
+#            symbol, colorRamp)
+
+        cats = [
+            ('{} - {} min'.format(levels[i]-inter_time, levels[i]),
+             levels[i]-inter_time,
+             levels[i])
+            for i in xrange(len(polygons))
+            ]  # label, lower bound, upper bound
+        colors = get_isochrones_colors(len(levels))
+        ranges = []
+        for ix, cat in enumerate(cats):
+            symbol = QgsFillSymbolV2()
+            symbol.setColor(QColor(colors[ix]))
+            rng = QgsRendererRangeV2(cat[1], cat[2], symbol, cat[0])
+            ranges.append(rng)
+
+        expression = 'max'
+        renderer = QgsGraduatedSymbolRendererV2(expression, ranges)
 
         isochrone_layer.setRendererV2(renderer)
         isochrone_layer.setLayerTransparency(10)

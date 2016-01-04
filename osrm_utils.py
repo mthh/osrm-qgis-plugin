@@ -462,3 +462,34 @@ class PolylineCodec(object):
             lng += lng_change
             coordinates.append((lng / 1e6, lat / 1e6))
         return coordinates
+
+def get_isochrones_colors(nb_features):
+    return {3: ('#66bd63',
+                '#fee08b', '#f46d43'),
+            4: ('#1a9850', '#a6d96a',
+                '#fee08b', '#f46d43'),
+            5: ('#1a9850', '#66bd63',
+                '#ffffbf', '#fc8d59', '#d73027'),
+            6: ('#1a9850', '#66bd63', '#d9ef8b',
+                '#fee08b', '#fc8d59', '#d73027'),
+            7: ('#1a9850', '#66bd63', '#d9ef8b', '#ffffbf',
+                '#fee08b', '#fc8d59', '#d73027'),
+            8: ('#1a9850', '#66bd63', '#a6d96a', '#d9ef8b',
+                '#fee08b', '#fdae61', '#f46d43', '#d73027'),
+            9: ('#1a9850', '#66bd63', '#a6d96a', '#d9ef8b', '#ffffbf',
+                '#fee08b', '#fdae61', '#f46d43', '#d73027'),
+            10: ('#006837', '#1a9850', '#66bd63', '#a6d96a', '#d9ef8b',
+                 '#fee08b', '#fdae61', '#f46d43', '#d73027', '#a50026'),
+            11: ('#006837', '#1a9850', '#66bd63', '#a6d96a', '#d9ef8b',
+                 '#ffffbf', '#fee08b', '#fdae61', '#f46d43', '#d73027',
+                 '#a50026'),
+            12: ('#006837', '#1a9850', '#66bd63', '#a6d96a', '#d9ef8b',
+                 '#e7ef88', '#ffffbf', '#fee08b', '#fdae61', '#f46d43',
+                 '#d73027', '#a50026'),
+            13: ('#006837', '#1a9850', '#66bd63', '#a6d96a', '#d9ef8b',
+                 '#e7ef88', '#ffffbf', '#fee08b', '#fdae61', '#f46d43',
+                 '#d73027', '#bb2921', '#a50026'),
+            14: ('#006837', '#1a9850', '#66bd63', '#a6d96a', '#d9ef8b',
+                 '#e7ef88', '#ffffbf', '#fff6a0', '#fee08b', '#fdae61',
+                 '#f46d43', '#d73027', '#bb2921', '#a50026')
+            }[nb_features]

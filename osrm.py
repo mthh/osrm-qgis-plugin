@@ -22,11 +22,11 @@
 """
 from qgis.core import *
 from qgis.utils import iface
-from qgis.gui import QgsMapToolEmitPoint, QgsMapLayerProxyModel
+from qgis.gui import QgsMapToolEmitPoint
 
 from PyQt4.QtCore import (
     QTranslator, qVersion, QCoreApplication,
-    QObject, SIGNAL, Qt, pyqtSlot
+    QObject, SIGNAL, Qt, pyqtSlot, QSettings
     )
 from PyQt4.QtGui import (
     QAction, QIcon, QMessageBox,
@@ -278,13 +278,6 @@ class OSRM(object):
                 QgsMapLayerRegistry.instance().removeMapLayer(layer)
         self.nb_done = 0
 
-    def clear_all_isochrone(self):
-        self.dlg.lineEdit_xyO.setText('')
-        self.nb_isocr = 0
-        for layer in QgsMapLayerRegistry.instance().mapLayers():
-            if 'isochrone_osrm' in layer:
-                QgsMapLayerRegistry.instance().removeMapLayer(layer)
-
     @pyqtSlot()
     def print_about(self):
         mbox = QMessageBox(self.iface.mainWindow())
@@ -458,12 +451,11 @@ class OSRM(object):
             instruct = self.parsed['route_instructions']
             provider = osrm_instruction_layer.dataProvider()
         else:
-            liste_coords = \
-                decode_geom_to_pts(self.parsed['alternative_geometries'][alt - 1])
-            pts_instruct = \
-                pts_ref(self.parsed['alternative_instructions'][alt - 1])
-            instruct = \
-                self.parsed['alternative_instructions'][alt - 1]
+            liste_coords = decode_geom_to_pts(
+                self.parsed['alternative_geometries'][alt - 1])
+            pts_instruct = pts_ref(
+                self.parsed['alternative_instructions'][alt - 1])
+            instruct = self.parsed['alternative_instructions'][alt - 1]
 
         for nbi, pt in enumerate(pts_instruct):
             fet = QgsFeature()
@@ -494,73 +486,11 @@ class OSRM(object):
     def run_batch_route(self):
         """Run the window to compute many viaroute"""
         self.nb_done = 0
-        self.dlg = OSRM_batch_route_Dialog()
-        self.dlg.ComboBoxOrigin.setFilters(
-            QgsMapLayerProxyModel.PointLayer)
-        self.dlg.ComboBoxDestination.setFilters(
-            QgsMapLayerProxyModel.PointLayer)
-        self.dlg.ComboBoxCsv.setFilters(
-            QgsMapLayerProxyModel.NoGeometry)
-        self.dlg.ComboBoxCsv.layerChanged.connect(
-            self._set_layer_field_combo)
-
+        self.dlg = OSRM_batch_route_Dialog(iface)
         self.dlg.pushButton_about.clicked.connect(self.print_about)
         self.dlg.pushButtonBrowse.clicked.connect(self.output_dialog_geo)
-        self.dlg.pushButtonReverse.clicked.connect(self.reverse_OD_batch)
         self.dlg.pushButtonRun.clicked.connect(self.get_batch_route)
         self.dlg.show()
-
-    def _prepare_queries(self):
-        """Get the coordinates for each viaroute to query"""
-        if self.dlg.check_two_layers.isChecked():
-            origin_layer = self.dlg.ComboBoxOrigin.currentLayer()
-            destination_layer = self.dlg.ComboBoxDestination.currentLayer()
-            if '4326' not in origin_layer.crs().authid():
-                xform = QgsCoordinateTransform(
-                    origin_layer.crs(), QgsCoordinateReferenceSystem(4326))
-                origin_ids_coords = \
-                    [(ft.id(), xform.transform(ft.geometry().asPoint()))
-                     for ft in origin_layer.getFeatures()]
-            else:
-                origin_ids_coords = \
-                    [(ft.id(), ft.geometry().asPoint())
-                     for ft in origin_layer.getFeatures()]
-
-            if '4326' not in destination_layer.crs().authid():
-                xform = QgsCoordinateTransform(
-                    origin_layer.crs(), QgsCoordinateReferenceSystem(4326))
-                destination_ids_coords = \
-                    [(ft.id(), xform.transform(ft.geometry().asPoint()))
-                     for ft in destination_layer.getFeatures()]
-            else:
-                destination_ids_coords = \
-                    [(ft.id(), ft.geometry().asPoint())
-                     for ft in destination_layer.getFeatures()]
-
-            if len(origin_ids_coords) * len(destination_ids_coords) > 100000:
-                QMessageBox.information(
-                    self.iface.mainWindow(), 'Info',
-                    "Too many route to calculate, try with less than 100000")
-                return -1
-
-            return [(origin[1][1], origin[1][0], dest[1][1], dest[1][0])
-                    for origin in origin_ids_coords
-                    for dest in destination_ids_coords]
-
-        elif self.dlg.check_csv.isChecked():
-            layer = self.dlg.ComboBoxCsv.currentLayer()
-            xo_col = self.dlg.FieldOriginX.currentField()
-            yo_col = self.dlg.FieldOriginY.currentField()
-            xd_col = self.dlg.FieldDestinationX.currentField()
-            yd_col = self.dlg.FieldDestinationY.currentField()
-            return [(str(ft.attribute(yo_col)), str(ft.attribute(xo_col)),
-                     str(ft.attribute(yd_col)), str(ft.attribute(xd_col)))
-                    for ft in layer.getFeatures()]
-        else:
-            QMessageBox.information(
-                self.iface.mainWindow(), 'Error',
-                "Choose a method between points layers / csv file")
-            return -1
 
     @pyqtSlot()
     def get_batch_route(self):
@@ -574,7 +504,7 @@ class OSRM(object):
             return -1
         self._check_host()
         self.nb_route, errors, consec_errors = 0, 0, 0
-        queries = self._prepare_queries()
+        queries = self.dlg._prepare_queries()
         try:
             nb_queries = len(queries)
         except TypeError:
@@ -690,7 +620,6 @@ class OSRM(object):
     def run_table(self):
         """Run the window for the table function"""
         self.dlg = OSRM_table_Dialog()
-        self.dlg.comboBox_layer.setFilters(QgsMapLayerProxyModel.PointLayer)
         self.dlg.pushButton_about.clicked.connect(self.print_about)
         self.dlg.pushButton_browse.clicked.connect(self.output_dialog)
         self.dlg.pushButton_fetch.clicked.connect(self.get_table)
@@ -699,61 +628,98 @@ class OSRM(object):
     @pyqtSlot()
     def get_table(self):
         self._check_host()
+        osrm_table_version = return_osrm_table_version(
+            self.host, (1.0, 1.0), self.http_header)
         self.filename = self.dlg.lineEdit_output.text()
         s_layer = self.dlg.comboBox_layer.currentLayer()
+        d_layer = self.dlg.comboBox_layer_2.currentLayer()
+        if 'old' in osrm_table_version and d_layer and d_layer != s_layer:
+            QMessageBox.information(
+                self.iface.mainWindow(), 'Error',
+                "Rectangular matrix aren't supported in your running version "
+                "of OSRM\nPlease only select a source point layer which will "
+                "be used to compute a square matrix\n(or update your OSRM "
+                "instance")
+            self.dlg.comboBox_layer_2.setCurrentIndex(-1)
+            return -1
 
-        if '4326' not in s_layer.crs().authid():
-            xform = QgsCoordinateTransform(
-                s_layer.crs(), QgsCoordinateReferenceSystem(4326))
-            coords = [xform.transform(ft.geometry().asPoint())
-                      for ft in s_layer.getFeatures()]
-        else:
-            coords = [ft.geometry().asPoint() for ft in s_layer.getFeatures()]
+        elif d_layer == s_layer:
+            d_layer = None
 
-        field = self.dlg.comboBox_idfield.currentField()
+        coords_src, ids_src = \
+            get_coords_ids(s_layer, self.dlg.comboBox_idfield.currentField())
 
-        if field != '':
-            ids = [ft.attribute(field) for ft in s_layer.getFeatures()]
-        else:
-            ids = [ft.id() for ft in s_layer.getFeatures()]
+        if d_layer: ### En faire une fonction :
+            coords_dest, ids_dest = \
+                get_coords_ids(d_layer, self.dlg.comboBox_idfield_2.currentField())
 
         try:
             conn = HTTPConnection(self.host)
-            table = h_light_table(coords, conn, headers=self.http_header)
+            if d_layer:
+                table, new_src_coords, new_dest_coords = \
+                    rectangular_light_table(
+                        coords_src, coords_dest, conn, self.http_header)
+            else:
+                table = h_light_table(coords_src, conn, headers=self.http_header)
+                if len(table) < len(coords_src):
+                    self.iface.messageBar().pushMessage(
+                        'The array returned by OSRM is smaller to the size of the '
+                        'array requested\nOSRM parameter --max-table-size should '
+                        'be increased', duration=20)
             conn.close()
+
         except ValueError as err:
             self._display_error(err, 1)
             return
         except Exception as er:
             self._display_error(er, 1)
+            return
 
-        if len(table) < len(coords):
-            self.iface.messageBar().pushMessage(
-                'The array returned by OSRM is smaller to the size of the '
-                'array requested\nOSRM parameter --max-table-size should '
-                'be increased', duration=20)
+        # Convert the matrix in minutes if needed :
         if self.dlg.checkBox_minutes.isChecked():
             table = np.array(table, dtype='float64')
             table = (table / 600.0).round(1)
+
+        # Replace the value for not found connections :
+#        # With a "Not found" message, nicer output but higher memory usage :
+#        if self.dlg.checkBox_empty_val.isChecked():
+#            table = table.astype(str)
+#            if self.dlg.checkBox_minutes.isChecked():
+#                table[table == '3579139.4'] = 'Not found connection'
+#            else:
+#                table[table == '2147483647'] = 'Not found connection'
+        # Or without converting the array to string
+        # (choosed solution at this time)
+        if self.dlg.checkBox_empty_val.isChecked():
+            if self.dlg.checkBox_minutes.isChecked():
+                table[table == 3579139.4] = np.NaN
+            else:
+                table[table == 2147483647] = np.NaN
 
         try:
             out_file = codecs_open(self.filename, 'w', encoding=self.encoding)
             writer = csv.writer(out_file, lineterminator='\n')
             if self.dlg.checkBox_flatten.isChecked():
                 table = table.ravel()
-                idsx = [(i, j)
-                        for i in ids for j in ids]
-                writer.writerow([u'Origin',
-                                 u'Destination',
-                                 u'Time'])
+                if d_layer:
+                    idsx = [(i, j) for i in ids_src for j in ids_dest]
+                else:
+                    idsx = [(i, j) for i in ids_src for j in ids_src]
+                writer.writerow([u'Origin', u'Destination', u'Time'])
                 writer.writerows([
                     [idsx[i][0], idsx[i][1], table[i]] for i in xrange(len(idsx))
                     ])
             else:
-                writer.writerow([u''] + ids)
-                writer.writerows(
-                    [[ids[_id]] + line for _id, line in enumerate(table
-                                                                  .tolist())])
+                if d_layer:
+                    writer.writerow([u''] + ids_dest)
+                    writer.writerows(
+                        [[ids_src[_id]] + line for _id, line in enumerate(table
+                                                                      .tolist())])
+                else:
+                    writer.writerow([u''] + ids_src)
+                    writer.writerows(
+                        [[ids_src[_id]] + line for _id, line in enumerate(table
+                                                                      .tolist())])
             out_file.close()
             QMessageBox.information(
                 self.iface.mainWindow(), 'Done',
@@ -766,12 +732,12 @@ class OSRM(object):
                 'OSRM-plugin error report :\n {}'.format(err),
                 level=QgsMessageLog.WARNING)
 
+
     @pyqtSlot()
     def run_accessibility(self):
         """Run the window for making accessibility isochrones"""
         self.dlg = OSRM_access_Dialog()
         self.originEmit = QgsMapToolEmitPoint(self.canvas)
-        self.nb_isocr = 0
         QObject.connect(
             self.originEmit,
             SIGNAL("canvasClicked(const QgsPoint&, Qt::MouseButton)"),
@@ -779,7 +745,6 @@ class OSRM(object):
             )
         self.dlg.pushButtonOrigin.clicked.connect(self.get_origin)
         self.dlg.pushButton_about.clicked.connect(self.print_about)
-        self.dlg.pushButtonClear.clicked.connect(self.clear_all_isochrone)
         self.dlg.pushButton_fetch.clicked.connect(self.get_access_isochrones)
         self.dlg.show()
 
@@ -796,7 +761,7 @@ class OSRM(object):
         - render the polygon.
         """
         self._check_host()
-        self.max_points = 580
+        self.max_points = 8650
         origin = self.dlg.lineEdit_xyO.text()
         if len(origin) < 4:
             self.iface.messageBar().pushMessage(
@@ -812,14 +777,21 @@ class OSRM(object):
         max_time = self.dlg.spinBox_max.value()
         inter_time = self.dlg.spinBox_intervall.value()
         self._make_prog_bar()
-        polygons, levels = self.prep_accessibility(
-            origin, self.host, inter_time, max_time)
+        version = return_osrm_table_version(self.host, origin, self.http_header)
+        if 'old' in version:
+            polygons, levels = self.prep_accessibility_old_osrm(
+                origin, self.host, inter_time, max_time)
+        elif 'new' in version:
+            polygons, levels = self.prep_accessibility_new_osrm(
+                origin, self.host, inter_time, max_time)
+        else:
+            return -1
 
         isochrone_layer = QgsVectorLayer(
             "MultiPolygon?crs=epsg:4326&field=id:integer"
             "&field=min:integer(10)"
             "&field=max:integer(10)",
-            "isochrone_osrm_{}".format(self.nb_isocr), "memory")
+            "isochrone_osrm_{}".format(self.dlg.nb_isocr), "memory")
         data_provider = isochrone_layer.dataProvider()
 
         features = []
@@ -830,17 +802,7 @@ class OSRM(object):
             ft.setAttributes([i, levels[i] - inter_time, levels[i]])
             features.append(ft)
         data_provider.addFeatures(features[::-1])
-        self.nb_isocr += 1
-
-#        symbol =  QgsFillSymbolV2()
-#        colorRamp = QgsVectorGradientColorRampV2.create(
-#            {'color1' : '#006837',
-#             'color2' : '#bb2921',
-#             'stops' : '0.5;#fff6a0'})
-#        renderer = QgsGraduatedSymbolRendererV2.createRenderer(
-#            isochrone_layer, 'max', len(levels),
-#            QgsGraduatedSymbolRendererV2.EqualInterval,
-#            symbol, colorRamp)
+        self.dlg.nb_isocr += 1
 
         cats = [
             ('{} - {} min'.format(levels[i]-inter_time, levels[i]),
@@ -860,13 +822,13 @@ class OSRM(object):
         renderer = QgsGraduatedSymbolRendererV2(expression, ranges)
 
         isochrone_layer.setRendererV2(renderer)
-        isochrone_layer.setLayerTransparency(10)
+        isochrone_layer.setLayerTransparency(25)
         self.iface.messageBar().clearWidgets()
         QgsMapLayerRegistry.instance().addMapLayer(isochrone_layer)
         self.iface.setActiveLayer(isochrone_layer)
 
-    @lru_cache(maxsize=25)
-    def prep_accessibility(self, point, url, inter_time, max_time):
+    @lru_cache(maxsize=20)
+    def prep_accessibility_old_osrm(self, point, url, inter_time, max_time):
         """Make the regular grid of points, snap them and compute tables"""
         try:
             conn = HTTPConnection(self.host)
@@ -884,6 +846,7 @@ class OSRM(object):
             point, conn, self.http_header)['mapped_coordinate'][::-1]
 
         self.progress.setValue(0.2)
+
         try:
             times = np.ndarray([])
             for nbi, chunk in enumerate(chunk_it(coords, 99)):
@@ -897,7 +860,7 @@ class OSRM(object):
             return
 
         conn.close()
-        times = (times[1:] / 600.0).round(0)
+        times = (times[1:] / 600.0).round(2)
         nb_inter = int(round(max_time / inter_time)) + 1
         levels = [nb for nb in xrange(0, int(
             round(np.nanmax(times)) + 1) + inter_time, inter_time)][:nb_inter]
@@ -908,40 +871,38 @@ class OSRM(object):
         polygons = qgsgeom_from_mpl_collec(collec_poly.collections)
         return polygons, levels
 
-    def reverse_OD_batch(self):
-        if self.dlg.check_csv.isChecked():
-            self.switch_OD_fields()
-        elif self.dlg.check_two_layers.isChecked():
-            self.swtich_OD_box()
-        else:
-            self.switch_OD_fields()
-            self.swtich_OD_box()
-
-    def switch_OD_fields(self):
+    @lru_cache(maxsize=20)
+    def prep_accessibility_new_osrm(self, point, url, inter_time, max_time):
+        """
+        Make the regular grid of points and compute a table between them and
+        and the source point, using the new OSRM table function for
+        rectangular matrix
+        """
         try:
-            oxf = self.dlg.FieldOriginX.currentField()
-            self.dlg.FieldOriginX.setField(
-                self.dlg.FieldDestinationX.currentField())
-            oyf = self.dlg.FieldOriginY.currentField()
-            self.dlg.FieldOriginY.setField(
-                self.dlg.FieldDestinationY.currentField())
-            self.dlg.FieldDestinationX.setField(oxf)
-            self.dlg.FieldDestinationY.setField(oyf)
+            conn = HTTPConnection(self.host)
         except Exception as err:
-            QgsMessageLog.logMessage(
-                'OSRM-plugin error report :\n {}'.format(err),
-                level=QgsMessageLog.WARNING)
+            self._display_error(err, 1)
+            return -1
 
-    def swtich_OD_box(self):
-        try:
-            tmp_o = self.dlg.ComboBoxOrigin.currentLayer()
-            tmp_d = self.dlg.ComboBoxDestination.currentLayer()
-            self.dlg.ComboBoxOrigin.setLayer(tmp_d)
-            self.dlg.ComboBoxDestination.setLayer(tmp_o)
-        except Exception as err:
-            QgsMessageLog.logMessage(
-                'OSRM-plugin error report :\n {}'.format(err),
-                level=QgsMessageLog.WARNING)
+        bounds = get_search_frame(point, max_time)
+        coords_grid = make_regular_points(bounds, self.max_points)
+        self.progress.setValue(0.1)
+
+        matrix, src_coords, snapped_dest_coords = rectangular_light_table(
+            point, coords_grid, conn, self.http_header)
+        times = (matrix[0] / 600.0).round(2)
+        conn.close()
+        self.progress.setValue(5)
+        nb_inter = int(round(max_time / inter_time)) + 1
+        levels = [nb for nb in xrange(0, int(
+            round(np.nanmax(times)) + 1) + inter_time, inter_time)][:nb_inter]
+        del matrix
+        collec_poly = interpolate_from_times(
+            times, [(i[1], i[0]) for i in snapped_dest_coords], levels)
+        self.progress.setValue(6)
+        _ = levels.pop(0)
+        polygons = qgsgeom_from_mpl_collec(collec_poly.collections)
+        return polygons, levels
 
     def output_dialog(self):
         self.dlg.lineEdit_output.clear()
@@ -956,12 +917,6 @@ class OSRM(object):
         if self.filename is None:
             return
         self.dlg.lineEdit_output.setText(self.filename)
-
-    def _set_layer_field_combo(self, layer):
-        self.dlg.FieldOriginX.setLayer(layer)
-        self.dlg.FieldOriginY.setLayer(layer)
-        self.dlg.FieldDestinationX.setLayer(layer)
-        self.dlg.FieldDestinationY.setLayer(layer)
 
     def _display_error(self, err, code):
         msg = {

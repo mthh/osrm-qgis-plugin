@@ -154,16 +154,16 @@
       <item row="0" column="1">
        <widget class="QSpinBox" name="spinBox_max">
         <property name="minimum">
-         <number>20</number>
+         <number>30</number>
         </property>
         <property name="maximum">
-         <number>70</number>
+         <number>80</number>
         </property>
         <property name="singleStep">
          <number>5</number>
         </property>
         <property name="value">
-         <number>45</number>
+         <number>60</number>
         </property>
        </widget>
       </item>

@@ -23,12 +23,19 @@
 
 import os
 from PyQt4 import QtGui, uic
+from PyQt4.QtCore import pyqtSlot
+from httplib import HTTPConnection
 from qgis.gui import QgsMapLayerProxyModel
 from qgis.core import (
-    QgsMessageLog, QgsCoordinateTransform,
-    QgsCoordinateReferenceSystem, QgsMapLayerRegistry
+    QgsMessageLog, QgsCoordinateTransform, QgsFeature,
+    QgsCoordinateReferenceSystem, QgsMapLayerRegistry,
+    QgsVectorLayer, QgsVectorFileWriter
     )
-
+from osrm_utils import check_host, decode_geom, lru_cache
+try:
+    import ujson as json
+except ImportError:
+    import json
 
 FORM_CLASS, _ = uic.loadUiType(os.path.join(
     os.path.dirname(__file__), 'osrm_dialog_base.ui'))
@@ -86,11 +93,12 @@ class OSRM_access_Dialog(QtGui.QDialog, FORM_CLASS_a):
 
 
 class OSRM_batch_route_Dialog(QtGui.QDialog, FORM_CLASS_b):
-    def __init__(self, iface, parent=None):
+    def __init__(self, iface, http_headers, parent=None):
         """Constructor."""
         super(OSRM_batch_route_Dialog, self).__init__(parent)
         self.setupUi(self)
         self.iface = iface
+        self.http_headers = http_headers
         self.ComboBoxOrigin.setFilters(QgsMapLayerProxyModel.PointLayer)
         self.ComboBoxDestination.setFilters(QgsMapLayerProxyModel.PointLayer)
         self.ComboBoxCsv.setFilters(QgsMapLayerProxyModel.NoGeometry)
@@ -102,12 +110,19 @@ class OSRM_batch_route_Dialog(QtGui.QDialog, FORM_CLASS_b):
             lambda st: self.check_two_layers.setCheckState(0) if (
                 st == 2 and self.check_two_layers.isChecked()) else None)
         self.ComboBoxCsv.layerChanged.connect(self._set_layer_field_combo)
+        self.nb_done = 0
 
     def _set_layer_field_combo(self, layer):
         self.FieldOriginX.setLayer(layer)
         self.FieldOriginY.setLayer(layer)
         self.FieldDestinationX.setLayer(layer)
         self.FieldDestinationY.setLayer(layer)
+
+    @lru_cache(maxsize=25)
+    def query_url(self, url, host):
+        self.conn.request('GET', url, headers=self.http_headers)
+        parsed = json.loads(self.conn.getresponse().read().decode('utf-8'))
+        return parsed
 
     def _prepare_queries(self):
         """Get the coordinates for each viaroute to query"""
@@ -195,3 +210,125 @@ class OSRM_batch_route_Dialog(QtGui.QDialog, FORM_CLASS_b):
             QgsMessageLog.logMessage(
                 'OSRM-plugin error report :\n {}'.format(err),
                 level=QgsMessageLog.WARNING)
+
+    @pyqtSlot()
+    def get_batch_route(self):
+        """Query the API and make a line for each route"""
+        self.filename = self.lineEdit_output.text()
+        if not self.check_add_layer.isChecked() \
+                and '.shp' not in self.filename:
+            QtGui.QMessageBox.information(
+                self.iface.mainWindow(), 'Error',
+                "Output have to be saved and/or added to the canvas")
+            return -1
+        try:
+            self.host = check_host(self.lineEdit_host.text())
+        except ValueError:
+            self.iface.messageBar().pushMessage(
+                "Error", "Please provide a valid non-empty URL", duration=10)
+        self.nb_route, errors, consec_errors = 0, 0, 0
+        queries = self._prepare_queries()
+        try:
+            nb_queries = len(queries)
+        except TypeError:
+            return -1
+        if nb_queries < 1:
+            QtGui.QMessageBox.information(
+                self.iface.mainWindow(), 'Info',
+                "Something wrong append - No locations to request"
+                .format(self.filename))
+            return -1
+        elif nb_queries > 500 and 'project-osrm' in self.host:
+            QtGui.QMessageBox.information(
+                self.iface.mainWindow(), 'Error',
+                "Please, don't make heavy requests on the public API")
+            return -1
+        self.conn = HTTPConnection(self.host)
+        features = []
+        for yo, xo, yd, xd in queries:
+            try:
+                url = (
+                    "/viaroute?loc={},{}&loc={},{}"
+                    "&instructions=false&alt=false").format(yo, xo, yd, xd)
+                parsed = self.query_url(url, self.host)
+            except Exception as err:
+                self._display_error(err, 1)
+                errors += 1
+                consec_errors += 1
+                continue
+#            else:
+            try:
+                line_geom = decode_geom(parsed['route_geometry'])
+            except KeyError:
+                self.iface.messageBar().pushMessage(
+                    "Error",
+                    "No route found between {} and {}"
+                    .format((xo, yo), (xd, yd)),
+                    duration=5)
+                errors += 1
+                consec_errors += 1
+                continue
+#                else:
+            fet = QgsFeature()
+            fet.setGeometry(line_geom)
+            fet.setAttributes([
+                self.nb_route,
+                parsed['route_summary']['total_time'],
+                parsed['route_summary']['total_distance']
+                ])
+            features.append(fet)
+            consec_errors = 0
+            self.nb_route += 1
+            if consec_errors > 50:
+                self.conn.close()
+                self._display_error("Too many errors occured when trying to "
+                                    "contact the OSRM instance - Route calcula"
+                                    "tion has been stopped ", 2)
+                break
+        self.conn.close()
+        self.nb_done += 1
+
+        if len(features) < 1:
+            QtGui.QMessageBox.information(
+                self.iface.mainWindow(), 'Info',
+                "Something wrong append - No feature fetched"
+                .format(self.filename))
+            return -1
+        else:
+            self.return_batch_route(features)
+
+    @pyqtSlot()
+    def return_batch_route(self, features):
+        """Save and/or display the routes retrieved"""
+        osrm_batch_route_layer = QgsVectorLayer(
+            "Linestring?crs=epsg:4326&field=id:integer"
+            "&field=total_time:integer(20)&field=distance:integer(20)",
+            "routes_osrm{}".format(self.nb_done), "memory")
+        provider = osrm_batch_route_layer.dataProvider()
+        provider.addFeatures(features)
+        QgsMapLayerRegistry.instance().addMapLayer(osrm_batch_route_layer)
+        if self.filename:
+            error = QgsVectorFileWriter.writeAsVectorFormat(
+                osrm_batch_route_layer, self.filename,
+                self.encoding, None, "ESRI Shapefile")
+            if error != QgsVectorFileWriter.NoError:
+                self.iface.messageBar().pushMessage(
+                    "Error",
+                    "Can't save the result into {} - Output have been "
+                    "added to the canvas (see QGis log for error trace"
+                    "back)".format(self.filename), duration=10)
+                QgsMessageLog.logMessage(
+                    'OSRM-plugin error report :\n {}'.format(error),
+                    level=QgsMessageLog.WARNING)
+                self.iface.setActiveLayer(osrm_batch_route_layer)
+                return -1
+            else:
+                QtGui.QMessageBox.information(
+                    self.iface.mainWindow(), 'Info',
+                    "Result saved in {}".format(self.filename))
+        if self.check_add_layer.isChecked():
+            self.iface.setActiveLayer(osrm_batch_route_layer)
+        else:
+            QgsMapLayerRegistry.instance().removeMapLayer(
+                osrm_batch_route_layer.id())
+        self.iface.messageBar().clearWidgets()

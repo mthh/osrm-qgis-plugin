@@ -23,7 +23,7 @@
 from qgis.core import *
 from qgis.utils import iface
 from qgis.gui import QgsMapToolEmitPoint
-
+from copy import copy
 from PyQt4.QtCore import (
     QTranslator, qVersion, QCoreApplication,
     QObject, SIGNAL, Qt, pyqtSlot, QSettings
@@ -237,6 +237,25 @@ class OSRM(object):
         self.canvas.unsetMapTool(self.originEmit)
         self.dlg.lineEdit_xyO.setText(str(point))
 
+    def store_intermediate(self, point):
+        if '4326' not in self.canvas.mapSettings().destinationCrs().authid():
+            crsSrc = self.canvas.mapSettings().destinationCrs()
+            xform = QgsCoordinateTransform(
+                crsSrc, QgsCoordinateReferenceSystem(4326))
+            point = xform.transform(point)
+        self.intermediate.append(tuple(map(lambda x: round(x, 6), point)))
+        self.canvas.unsetMapTool(self.intermediateEmit)
+        self.dlg.lineEdit_xyI.setText(str(self.intermediate)[1:-1])
+
+    def store_intermediate_acces(self, point):
+        if '4326' not in self.canvas.mapSettings().destinationCrs().authid():
+            crsSrc = self.canvas.mapSettings().destinationCrs()
+            xform = QgsCoordinateTransform(
+                crsSrc, QgsCoordinateReferenceSystem(4326))
+            point = xform.transform(point)
+        tmp = self.dlg.lineEdit_xyO.text()
+        self.dlg.lineEdit_xyO.setText(', '.join([tmp, repr(point)]))
+
     def store_destination(self, point):
         if '4326' not in self.canvas.mapSettings().destinationCrs().authid():
             crsSrc = self.canvas.mapSettings().destinationCrs()
@@ -253,6 +272,9 @@ class OSRM(object):
     def get_destination(self):
         self.canvas.setMapTool(self.destinationEmit)
 
+    def get_intermediate(self):
+        self.canvas.setMapTool(self.intermediateEmit)
+
     def reverse_OD(self):
         try:
             tmp = self.dlg.lineEdit_xyO.text()
@@ -265,18 +287,14 @@ class OSRM(object):
     def clear_all_single(self):
         self.dlg.lineEdit_xyO.setText('')
         self.dlg.lineEdit_xyD.setText('')
+        self.dlg.lineEdit_xyI.setText('')
+        self.intermediate = []
         for layer in QgsMapLayerRegistry.instance().mapLayers():
             if 'route_osrm' in layer \
                     or 'instruction_osrm' in layer \
                     or 'markers_osrm' in layer:
                 QgsMapLayerRegistry.instance().removeMapLayer(layer)
         self.nb_route = 0
-
-    def clear_all_routes(self):
-        for layer in QgsMapLayerRegistry.instance().mapLayers():
-            if 'routes_osrm' in layer:
-                QgsMapLayerRegistry.instance().removeMapLayer(layer)
-        self.nb_done = 0
 
     @pyqtSlot()
     def print_about(self):
@@ -305,8 +323,14 @@ class OSRM(object):
 
     @pyqtSlot()
     def get_route(self):
-        self._check_host()
+        try:
+            self.host = check_host(self.dlg.lineEdit_host.text())
+        except ValueError:
+            self.iface.messageBar().pushMessage(
+                "Error", "Please provide a valid non-empty URL", duration=10)
+
         origin = self.dlg.lineEdit_xyO.text()
+        interm = self.dlg.lineEdit_xyI.text()
         destination = self.dlg.lineEdit_xyD.text()
         if len(origin) < 4 or len(destination) < 4:
             self.iface.messageBar().pushMessage("Error",
@@ -320,12 +344,31 @@ class OSRM(object):
             self.iface.messageBar().pushMessage("Error", "Invalid coordinates",
                                                 duration=10)
             return -1
-        url = ''.join([
-            "/viaroute?loc={},{}&loc={},{}".format(yo, xo, yd, xd),
-            "&instructions={}&alt={}".format(
-                str(self.dlg.checkBox_instruction.isChecked()).lower(),
-                str(self.dlg.checkBox_alternative.isChecked()).lower())
-                ])
+
+        if interm:
+            try:
+                interm = eval(''.join(['[', interm, ']']))
+                tmp = ''.join(
+                    ['&loc={},{}'.format(yi, xi) for xi, yi in interm])
+                url = ''.join([
+                    "/viaroute?loc={},{}".format(yo, xo),
+                    tmp,
+                    "&loc={},{}".format(yd, xd),
+                    "&instructions={}&alt={}".format(
+                        str(self.dlg.checkBox_instruction.isChecked()).lower(),
+                        str(self.dlg.checkBox_alternative.isChecked()).lower())
+                    ])
+            except:
+                self.iface.messageBar().pushMessage(
+                    "Error", "Invalid intemediates coordinates", duration=10)
+
+        else:
+            url = ''.join([
+                "/viaroute?loc={},{}&loc={},{}".format(yo, xo, yd, xd),
+                "&instructions={}&alt={}".format(
+                    str(self.dlg.checkBox_instruction.isChecked()).lower(),
+                    str(self.dlg.checkBox_alternative.isChecked()).lower())
+                    ])
 
         try:
             self.conn = HTTPConnection(self.host)
@@ -359,7 +402,7 @@ class OSRM(object):
                            self.parsed['route_summary']['total_distance']])
         provider.addFeatures([fet])
 
-        self.make_OD_markers(xo, yo, xd, yd)
+        self.make_OD_markers(xo, yo, xd, yd, interm)
         osrm_route_layer.updateExtents()
         self.iface.setActiveLayer(osrm_route_layer)
         self.iface.zoomToActiveLayer()
@@ -384,19 +427,27 @@ class OSRM(object):
         """Run the window to compute a single viaroute"""
         self.dlg = OSRMDialog()
         self.origin = None
+        self.interm = None
         self.destination = None
         self.nb_route = 0
+        self.intermediate = []
         self.originEmit = QgsMapToolEmitPoint(self.canvas)
+        self.intermediateEmit = QgsMapToolEmitPoint(self.canvas)
         self.destinationEmit = QgsMapToolEmitPoint(self.canvas)
         QObject.connect(
             self.originEmit,
             SIGNAL("canvasClicked(const QgsPoint&, Qt::MouseButton)"),
             self.store_origin)
         QObject.connect(
+            self.intermediateEmit,
+            SIGNAL("canvasClicked(const QgsPoint&, Qt::MouseButton)"),
+            self.store_intermediate)
+        QObject.connect(
             self.destinationEmit,
             SIGNAL("canvasClicked(const QgsPoint&, Qt::MouseButton)"),
             self.store_destination)
         self.dlg.pushButtonOrigin.clicked.connect(self.get_origin)
+        self.dlg.pushButtonIntermediate.clicked.connect(self.get_intermediate)
         self.dlg.pushButtonDest.clicked.connect(self.get_destination)
         self.dlg.pushButtonReverse.clicked.connect(self.reverse_OD)
         self.dlg.pushButtonTryIt.clicked.connect(self.get_route)
@@ -412,28 +463,51 @@ class OSRM(object):
         self.my_symb.setColor(QColor(colors[p]))
         self.my_symb.setWidth(1.2)
 
-    def make_OD_markers(self, xo, yo, xd, yd):
+    def make_OD_markers(self, xo, yo, xd, yd, list_coords=None):
         OD_layer = QgsVectorLayer(
             "Point?crs=epsg:4326&field=id_route:integer&field=role:string(80)",
             "markers_osrm{}".format(self.nb_route), "memory")
         pr_pt = OD_layer.dataProvider()
+        features = []
         fet = QgsFeature()
         fet.setGeometry(QgsGeometry.fromPoint(QgsPoint(float(xo), float(yo))))
         fet.setAttributes([self.nb_route, 'Origin'])
-        pr_pt.addFeatures([fet])
+        features.append(fet)
         fet = QgsFeature()
         fet.setGeometry(QgsGeometry.fromPoint(QgsPoint(float(xd), float(yd))))
         fet.setAttributes([self.nb_route, 'Destination'])
-        pr_pt.addFeatures([fet])
-        s1 = QgsMarkerSymbolV2.createSimple({'size': '4', 'color': '#50b56d'})
-        s2 = QgsMarkerSymbolV2.createSimple({'size': '4', 'color': '#d31115'})
-        cats = [QgsRendererCategoryV2("Origin", s1, "Origin"),
-                QgsRendererCategoryV2("Destination", s2, "Destination")]
-        renderer = QgsCategorizedSymbolRendererV2("", cats)
-        renderer.setClassAttribute("role")
+        features.append(fet)
+        marker_rules = [
+            ('Origin', '"role" LIKE \'Origin\'', '#50b56d', 4),
+            ('Destination', '"role" LIKE \'Destination\'', '#d31115', 4),
+        ]
+        if list_coords:
+            for i, pt in enumerate(list_coords):
+                fet = QgsFeature()
+                fet.setGeometry(
+                    QgsGeometry.fromPoint(QgsPoint(float(pt[0]), float(pt[1]))))
+                fet.setAttributes([self.nb_route, 'Via point n°{}'.format(i)])
+                features.append(fet)
+            marker_rules.insert(
+                1,  ('Intermediate', '"role" LIKE \'Via point%\'', 'grey', 2))
+        pr_pt.addFeatures(features)
+
+        symbol = QgsSymbolV2.defaultSymbol(OD_layer.geometryType())
+        renderer = QgsRuleBasedRendererV2(symbol)
+        root_rule = renderer.rootRule()
+        for label, expression, color_name, size in marker_rules:
+            rule = root_rule.children()[0].clone()
+            rule.setLabel(label)
+            rule.setFilterExpression(expression)
+            rule.symbol().setColor(QColor(color_name))
+            rule.symbol().setSize(size)
+            root_rule.appendChild(rule)
+        
+        root_rule.removeChildAt(0)
         OD_layer.setRendererV2(renderer)
         QgsMapLayerRegistry.instance().addMapLayer(OD_layer)
         self.iface.setActiveLayer(OD_layer)
+
 
     def prep_instruction(self, alt=None, provider=None,
                             osrm_instruction_layer=None):
@@ -486,135 +560,11 @@ class OSRM(object):
     def run_batch_route(self):
         """Run the window to compute many viaroute"""
         self.nb_done = 0
-        self.dlg = OSRM_batch_route_Dialog(iface)
+        self.dlg = OSRM_batch_route_Dialog(iface, self.http_header)
         self.dlg.pushButton_about.clicked.connect(self.print_about)
         self.dlg.pushButtonBrowse.clicked.connect(self.output_dialog_geo)
-        self.dlg.pushButtonRun.clicked.connect(self.get_batch_route)
+        self.dlg.pushButtonRun.clicked.connect(self.dlg.get_batch_route)
         self.dlg.show()
-
-    @pyqtSlot()
-    def get_batch_route(self):
-        """Query the API and make a line for each route"""
-        self.filename = self.dlg.lineEdit_output.text()
-        if not self.dlg.check_add_layer.isChecked() \
-                and '.shp' not in self.filename:
-            QMessageBox.information(
-                self.iface.mainWindow(), 'Error',
-                "Output have to be saved and/or added to the canvas")
-            return -1
-        self._check_host()
-        self.nb_route, errors, consec_errors = 0, 0, 0
-        queries = self.dlg._prepare_queries()
-        try:
-            nb_queries = len(queries)
-        except TypeError:
-            return -1
-        if nb_queries < 1:
-            QMessageBox.information(
-                self.iface.mainWindow(), 'Info',
-                "Something wrong append - No locations to request"
-                .format(self.filename))
-            return -1
-        elif nb_queries > 500 and 'project-osrm' in self.host:
-            QMessageBox.information(
-                self.iface.mainWindow(), 'Error',
-                "Please, don't make heavy requests on the public API")
-            return -1
-        self._make_prog_bar()
-        self.progress.setValue(0.1)
-        self.conn = HTTPConnection(self.host)
-        features = []
-        for yo, xo, yd, xd in queries:
-            try:
-                url = (
-                    "/viaroute?loc={},{}&loc={},{}"
-                    "&instructions=false&alt=false").format(yo, xo, yd, xd)
-                self.parsed = self.query_url(url, self.host)
-            except Exception as err:
-                self._display_error(err, 1)
-                errors += 1
-                consec_errors += 1
-                continue
-#            else:
-            try:
-                line_geom = decode_geom(self.parsed['route_geometry'])
-            except KeyError:
-                self.iface.messageBar().pushMessage(
-                    "Error",
-                    "No route found between {} and {}"
-                    .format((xo, yo), (xd, yd)),
-                    duration=5)
-                errors += 1
-                consec_errors += 1
-                continue
-#                else:
-            fet = QgsFeature()
-            fet.setGeometry(line_geom)
-            fet.setAttributes([
-                self.nb_route,
-                self.parsed['route_summary']['total_time'],
-                self.parsed['route_summary']['total_distance']
-                ])
-            features.append(fet)
-            consec_errors = 0
-            self.nb_route += 1
-            if consec_errors > 50:
-                self.conn.close()
-                self._display_error("Too many errors occured when trying to "
-                                    "contact the OSRM instance - Route calcula"
-                                    "tion has been stopped ", 2)
-                break
-            self.progress.setValue((
-                (self.nb_route + errors) * 10 / nb_queries) - 1)
-        self.conn.close()
-        self.nb_done += 1
-
-        if len(features) < 1:
-            QMessageBox.information(
-                self.iface.mainWindow(), 'Info',
-                "Something wrong append - No feature fetched"
-                .format(self.filename))
-            return -1
-        else:
-            self.return_batch_route(features)
-            return
-
-    @pyqtSlot()
-    def return_batch_route(self, features):
-        """Save and/or display the routes retrieved"""
-        osrm_batch_route_layer = QgsVectorLayer(
-            "Linestring?crs=epsg:4326&field=id:integer"
-            "&field=total_time:integer(20)&field=distance:integer(20)",
-            "routes_osrm{}".format(self.nb_done), "memory")
-        provider = osrm_batch_route_layer.dataProvider()
-        provider.addFeatures(features)
-        QgsMapLayerRegistry.instance().addMapLayer(osrm_batch_route_layer)
-        self.progress.setValue(9.5)
-        if self.filename:
-            error = QgsVectorFileWriter.writeAsVectorFormat(
-                osrm_batch_route_layer, self.filename,
-                self.encoding, None, "ESRI Shapefile")
-            if error != QgsVectorFileWriter.NoError:
-                self.iface.messageBar().pushMessage(
-                    "Error",
-                    "Can't save the result into {} - Output have been "
-                    "added to the canvas (see QGis log for error trace"
-                    "back)".format(self.filename), duration=10)
-                QgsMessageLog.logMessage(
-                    'OSRM-plugin error report :\n {}'.format(error),
-                    level=QgsMessageLog.WARNING)
-                self.iface.setActiveLayer(osrm_batch_route_layer)
-                return -1
-            else:
-                QMessageBox.information(
-                    self.iface.mainWindow(), 'Info',
-                    "Result saved in {}".format(self.filename))
-        if self.dlg.check_add_layer.isChecked():
-            self.iface.setActiveLayer(osrm_batch_route_layer)
-        else:
-            QgsMapLayerRegistry.instance().removeMapLayer(
-                osrm_batch_route_layer.id())
-        self.iface.messageBar().clearWidgets()
 
     @pyqtSlot()
     def run_table(self):
@@ -627,7 +577,11 @@ class OSRM(object):
 
     @pyqtSlot()
     def get_table(self):
-        self._check_host()
+        try:
+            self.host = check_host(self.dlg.lineEdit_host.text())
+        except ValueError:
+            self.iface.messageBar().pushMessage(
+                "Error", "Please provide a valid non-empty URL", duration=10)
         osrm_table_version = return_osrm_table_version(
             self.host, (1.0, 1.0), self.http_header)
         self.filename = self.dlg.lineEdit_output.text()
@@ -737,16 +691,32 @@ class OSRM(object):
     def run_accessibility(self):
         """Run the window for making accessibility isochrones"""
         self.dlg = OSRM_access_Dialog()
+        self.intermediate = []
         self.originEmit = QgsMapToolEmitPoint(self.canvas)
         QObject.connect(
             self.originEmit,
             SIGNAL("canvasClicked(const QgsPoint&, Qt::MouseButton)"),
             self.store_origin
             )
+        self.intermediateEmit = QgsMapToolEmitPoint(self.canvas)
+        QObject.connect(
+            self.intermediateEmit,
+            SIGNAL("canvasClicked(const QgsPoint&, Qt::MouseButton)"),
+            self.store_intermediate_acces
+            )
         self.dlg.pushButtonOrigin.clicked.connect(self.get_origin)
         self.dlg.pushButton_about.clicked.connect(self.print_about)
+        self.dlg.toolButton_poly.clicked.connect(self.polycentric)
         self.dlg.pushButton_fetch.clicked.connect(self.get_access_isochrones)
         self.dlg.show()
+
+    @pyqtSlot()
+    def polycentric(self):
+        QMessageBox.information(
+                self.iface.mainWindow(), 'Info',
+                "Expetimental : add points and compute polycentric "
+                "accessibility isochrones")
+        self.get_intermediate()
 
     @pyqtSlot()
     def get_access_isochrones(self):
@@ -760,15 +730,19 @@ class OSRM(object):
             desired time intervals (using matplotlib library),
         - render the polygon.
         """
-        self._check_host()
-        self.max_points = 8650
-        origin = self.dlg.lineEdit_xyO.text()
-        if len(origin) < 4:
+        try:
+            self.host = check_host(self.dlg.lineEdit_host.text())
+        except ValueError:
+            self.iface.messageBar().pushMessage(
+                "Error", "Please provide a valid non-empty URL", duration=10)
+        self.max_points = 9420
+        pts = self.dlg.lineEdit_xyO.text()
+        if len(pts) < 4:
             self.iface.messageBar().pushMessage(
                 "Error", "No coordinates selected!", duration=10)
             return
         try:
-            origin = eval(origin)
+            pts = eval(pts)
         except:
             self.iface.messageBar().pushMessage("Error", "Invalid coordinates",
                                                 duration=10)
@@ -777,13 +751,13 @@ class OSRM(object):
         max_time = self.dlg.spinBox_max.value()
         inter_time = self.dlg.spinBox_intervall.value()
         self._make_prog_bar()
-        version = return_osrm_table_version(self.host, origin, self.http_header)
+        version = return_osrm_table_version(self.host, (1.0, 2.2), self.http_header)
         if 'old' in version:
             polygons, levels = self.prep_accessibility_old_osrm(
-                origin, self.host, inter_time, max_time)
+                pts, self.host, inter_time, max_time)
         elif 'new' in version:
             polygons, levels = self.prep_accessibility_new_osrm(
-                origin, self.host, inter_time, max_time)
+                pts, self.host, inter_time, max_time)
         else:
             return -1
 
@@ -795,7 +769,7 @@ class OSRM(object):
         data_provider = isochrone_layer.dataProvider()
 
         features = []
-        self.progress.setValue(9.5)
+        self.progress.setValue(8.5)
         for i, poly in enumerate(polygons):
             ft = QgsFeature()
             ft.setGeometry(poly)
@@ -803,7 +777,7 @@ class OSRM(object):
             features.append(ft)
         data_provider.addFeatures(features[::-1])
         self.dlg.nb_isocr += 1
-
+        self.progress.setValue(9.5)
         cats = [
             ('{} - {} min'.format(levels[i]-inter_time, levels[i]),
              levels[i]-inter_time,
@@ -872,11 +846,13 @@ class OSRM(object):
         return polygons, levels
 
     @lru_cache(maxsize=20)
-    def prep_accessibility_new_osrm(self, point, url, inter_time, max_time):
+    def prep_accessibility_new_osrm(self, points, url, inter_time, max_time):
         """
         Make the regular grid of points and compute a table between them and
         and the source point, using the new OSRM table function for
         rectangular matrix
+        + experimental support for polycentric accessibility isochrones
+        (or multiple isochrones from multiple origine in one time...)
         """
         try:
             conn = HTTPConnection(self.host)
@@ -884,25 +860,44 @@ class OSRM(object):
             self._display_error(err, 1)
             return -1
 
-        bounds = get_search_frame(point, max_time)
-        coords_grid = make_regular_points(bounds, self.max_points)
-        self.progress.setValue(0.1)
+        polygons = []
+        points = [points] if isinstance(points[0], float) else points
+        prog_val = 1
+        for nb, point in enumerate(points):
+            bounds = get_search_frame(point, max_time)
+            coords_grid = make_regular_points(bounds, self.max_points)
+            prog_val += 0.1 * (nb/len(points))
+            self.progress.setValue(prog_val)
 
-        matrix, src_coords, snapped_dest_coords = rectangular_light_table(
-            point, coords_grid, conn, self.http_header)
-        times = (matrix[0] / 600.0).round(2)
+            matrix, src_coords, snapped_dest_coords = rectangular_light_table(
+                point, coords_grid, conn, self.http_header)
+#            snapped_dest_coords.extend(tmp)
+#            times = np.append(times, (matrix[0] / 600.0).round(2)[:])
+            times = (matrix[0] / 600.0).round(2)
+            prog_val += 4 * (nb/len(points))
+            self.progress.setValue(prog_val)
+            nb_inter = int(round(max_time / inter_time)) + 1
+            levels = [nb for nb in xrange(0, int(
+                round(np.nanmax(times)) + 1) + inter_time, inter_time)][:nb_inter]
+            del matrix
+            collec_poly = interpolate_from_times(
+                times, [(i[1], i[0]) for i in snapped_dest_coords], levels)
+            prog_val += 7 * (nb/len(points))
+            self.progress.setValue(7)
+            _ = levels.pop(0)
+            polygons.append(qgsgeom_from_mpl_collec(collec_poly.collections))
+        
         conn.close()
-        self.progress.setValue(5)
-        nb_inter = int(round(max_time / inter_time)) + 1
-        levels = [nb for nb in xrange(0, int(
-            round(np.nanmax(times)) + 1) + inter_time, inter_time)][:nb_inter]
-        del matrix
-        collec_poly = interpolate_from_times(
-            times, [(i[1], i[0]) for i in snapped_dest_coords], levels)
-        self.progress.setValue(6)
-        _ = levels.pop(0)
-        polygons = qgsgeom_from_mpl_collec(collec_poly.collections)
-        return polygons, levels
+
+        if len(points) > 1:
+            tmp = len(polygons[0])
+            assert all([len(x) == tmp for x in polygons])
+            polygons = np.array(polygons).transpose().tolist()
+            print(polygons)
+            merged_poly = [QgsGeometry.unaryUnion(polys) for polys in polygons]
+            return merged_poly, levels
+        else:
+            return polygons[0], levels
 
     def output_dialog(self):
         self.dlg.lineEdit_output.clear()
@@ -942,23 +937,6 @@ class OSRM(object):
         self.iface.messageBar().pushWidget(
             progMessageBar, iface.messageBar().INFO)
 
-    def _check_host(self):
-        """ Helper function to get the hostname in desired format """
-        tmp = self.dlg.lineEdit_host.text()
-        if len(tmp) < 5:
-            self.iface.messageBar().pushMessage(
-                "Error", "Please provide a valid non-empty URL", duration=10)
-            return
-        if not ('http' in tmp and '//' in tmp) and tmp[-1] == '/':
-            self.host = tmp[:-1]
-        elif not ('http:' in tmp and '//' in tmp):
-            self.host = tmp
-        elif 'http://' in tmp[:7] and tmp[-1] == '/':
-            self.host = tmp[7:-1]
-        elif 'http://' in tmp[:7]:
-            self.host = tmp[7:]
-        else:
-            self.host = tmp
 
 # TODO :
 # - ensure that the MapToolEmitPoint is unset when the plugin window is closed

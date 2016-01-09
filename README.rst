@@ -23,28 +23,28 @@ If used to request the public API you have to adhere to the `API Usage Policy`_ 
 
 Example
 =======
-**Draw a simple route** :
+**Display a simple route from OSRM (with support of viapoints, alternatives roads and route instructions)**:
 
 .. image:: help/source/img/route.jpg
    :scale: 10 %
    :alt: route illustration
    :align: center
 
-**Get a time matrix from a QGIS point layer** :
+**Get a time matrix from a (or two) QGIS point layer(s)**:
 
 .. image:: help/source/img/table.jpg
    :scale: 10 %
    :alt: isochrone illustration
    :align: center
 
-**Compute accessibility isochrones** : 
+**Compute monocentric or polycentric accessibility isochrones**: 
 
-.. image:: help/source/img/isochrone.jpg
+.. image:: help/source/img/multi_isochrone.jpg
    :scale: 10 %
    :alt: isochrone illustration
    :align: center
 
-**Retrieve many routes from two QGIS layer of points**:
+**Retrieve many routes between two QGIS layer of points**:
 
 .. image:: help/source/img/many_routes.jpg
    :scale: 10 %
@@ -54,6 +54,10 @@ Example
 
 Changelog
 =========
+
+	- Add support for intermediate points in viaroute displaying.
+	- Add experimental support for "polycentric" accessibility isochrones.
+	- Add support for new OSRM rectangular matrix (and isochrones creation using it).
 0.0.1:
 	- First release
 0.0.1-rc1:

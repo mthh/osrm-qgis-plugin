@@ -33,13 +33,30 @@ try:
 except:
     import json
 
-__all__ = ['save_dialog', 'save_dialog_geo', 'qgsgeom_from_mpl_collec',
+__all__ = ['check_host', 'save_dialog', 'save_dialog_geo', 'qgsgeom_from_mpl_collec',
            'interpolate_from_times', 'get_coords_ids', 'chunk_it',
            'accumulated_time', 'pts_ref',
            'return_osrm_table_version', 'decode_geom', 'h_light_table',
            'rectangular_light_table', 'decode_geom_to_pts', 'h_locate',
            'make_regular_points', 'get_search_frame', 'get_isochrones_colors',
            'PolylineCodec', 'lru_cache']
+
+def check_host(url):
+    """ Helper function to get the hostname in desired format """
+    if len(url) < 4:
+        raise ValueError('Probably empty/non-valable url')
+    if not ('http' in url and '//' in url) and url[-1] == '/':
+        host = url[:-1]
+    elif not ('http:' in url and '//' in url):
+        host = url
+    elif 'http://' in url[:7] and url[-1] == '/':
+        host = url[7:-1]
+    elif 'http://' in tmp[:7]:
+        host = url[7:]
+    else:
+        host = url
+    return host
+
 
 def save_dialog(filtering="CSV (*.csv *.CSV)"):
     settings = QSettings()

@@ -30,7 +30,7 @@ Find a route
 ------------
 **Display a simple route from OSRM (with support of viapoints, alternatives roads and route instructions)**:
 
-.. image:: route.jpg
+.. image:: help/source/img/route.jpg
    :scale: 10 %
    :alt: route illustration
    :align: center
@@ -39,7 +39,7 @@ Fetch a time-distance matrix
 ----------------------------
 **Get a time matrix from one (or between two) QGIS point layer(s)**:
 
-.. image:: table.jpg
+.. image:: help/source/img/table.jpg
    :scale: 10 %
    :alt: isochrone illustration
    :align: center
@@ -48,7 +48,7 @@ Compute accessibility isochrones
 --------------------------------
 **Compute monocentric or polycentric accessibility isochrones**: 
 
-.. image:: multi_isochrone.jpg
+.. image:: help/source/img/multi_isochrone.jpg
    :scale: 10 %
    :alt: isochrone illustration
    :align: center
@@ -57,7 +57,7 @@ Compute many *viaroute*
 -----------------------
 **Retrieve many routes between two QGIS layer of points**:
 
-.. image:: many_routes.jpg
+.. image:: help/source/img/many_routes.jpg
    :scale: 10 %
    :alt: isochrone illustration
    :align: center
@@ -65,7 +65,7 @@ Compute many *viaroute*
 Display the solution of the Travelling Salesman Problem
 -------------------------------------------------------
 **Display the result of the Travelling Salesman Problem computed by OSRM**:
-.. image:: tsp.jpg
+.. image:: help/source/img/tsp.jpg
    :scale: 10 %
    :alt: isochrone illustration
    :align: center

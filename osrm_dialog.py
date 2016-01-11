@@ -25,7 +25,7 @@ import os
 import csv
 import numpy as np
 from PyQt4 import QtGui, uic
-from PyQt4.QtCore import pyqtSlot, Qt
+from PyQt4.QtCore import pyqtSlot, Qt, QPointF
 from re import match
 from sys import version_info
 from httplib import HTTPConnection
@@ -33,8 +33,8 @@ from codecs import open as codecs_open
 from qgis.gui import QgsMapLayerProxyModel, QgsMapToolEmitPoint
 from qgis.core import (
     QgsMessageLog, QgsCoordinateTransform, QgsFeature,
-    QgsCoordinateReferenceSystem, QgsMapLayerRegistry,
-    QgsVectorLayer, QgsVectorFileWriter, QgsPoint,
+    QgsCoordinateReferenceSystem, QgsMapLayerRegistry, QgsProject,
+    QgsVectorLayer, QgsVectorFileWriter, QgsPoint, QgsFontMarkerSymbolLayerV2,
     QgsGeometry, QgsRuleBasedRendererV2, QgsSymbolV2, QGis,
     QgsGraduatedSymbolRendererV2, QgsRendererRangeV2, QgsFillSymbolV2,
     QgsSingleSymbolRendererV2
@@ -106,6 +106,7 @@ class OSRM_DialogTSP(QtGui.QDialog, FORM_CLASS_tsp, TemplateOsrm):
         self.http_headers = HTTP_HEADERS
         self.pushButton_display.clicked.connect(self.run_tsp)
         self.pushButton_clear.clicked.connect(self.clear_results)
+        self.comboBox_layer.setFilters(QgsMapLayerProxyModel.PointLayer)
         self.nb_route = 0
 
     def clear_results(self):
@@ -119,6 +120,7 @@ class OSRM_DialogTSP(QtGui.QDialog, FORM_CLASS_tsp, TemplateOsrm):
         if self.checkBox_selec_features.isChecked():
             pass
         coords, _ = get_coords_ids(layer, '')
+
         if len(coords) < 2:
             return -1
 
@@ -127,10 +129,10 @@ class OSRM_DialogTSP(QtGui.QDialog, FORM_CLASS_tsp, TemplateOsrm):
         except ValueError:
             self.iface.messageBar().pushMessage(
                 "Error", "Please provide a valid non-empty URL", duration=10)
-        _ = coords.pop(0)
+
         query = ''.join(
-            ['/trip?loc={},{}&loc='.format(_[1], _[0]),
-             '&loc='.join(['{},{}'.format(i[1], i[0]) for i in coords])])
+            ['/trip?loc={},{}&loc='.format(coords[0][1], coords[0][0]),
+             '&loc='.join(['{},{}'.format(i[1], i[0]) for i in coords[1:]])])
         try:
             self.conn = HTTPConnection(self.host)
             self.parsed = self.query_url(query, self.host)
@@ -170,11 +172,27 @@ class OSRM_DialogTSP(QtGui.QDialog, FORM_CLASS_tsp, TemplateOsrm):
                               feature['route_summary']['total_distance'],
                               feature['route_summary']['total_time']])
             features.append(ft)
+            self.prepare_ordered_marker(coords, idx)
         tsp_route_layer.dataProvider().addFeatures(features)
         tsp_route_layer.updateExtents()
         QgsMapLayerRegistry.instance().addMapLayer(tsp_route_layer)
         self.iface.setActiveLayer(tsp_route_layer)
         self.iface.zoomToActiveLayer()
+
+        root = QgsProject.instance().layerTreeRoot()
+
+        myblayer = root.findLayer(self.tsp_marker_layer.id())
+        myClone = myblayer.clone()
+        parent = myblayer.parent()
+        parent.insertChildNode(0, myClone)
+        parent.removeChildNode(myblayer)
+
+        myalayer = root.findLayer(tsp_route_layer.id())
+        myClone = myalayer.clone()
+        parent = myalayer.parent()
+        parent.insertChildNode(1, myClone)
+        parent.removeChildNode(myalayer)
+
         self.nb_route += 1
 
         if self.checkBox_instructions.isChecked():
@@ -182,6 +200,45 @@ class OSRM_DialogTSP(QtGui.QDialog, FORM_CLASS_tsp, TemplateOsrm):
 #            pr_instruct, instruct_layer = self.prep_instruction()
 #            QgsMapLayerRegistry.instance().addMapLayer(instruct_layer)
 #            self.iface.setActiveLayer(instruct_layer)
+
+    def prepare_ordered_marker(self, coords, idx):
+        self.tsp_marker_layer = QgsVectorLayer(
+            "Point?crs=epsg:4326&field=id:integer"
+            "&field=TSP_nb:integer(20)&field=Origin_nb:integer(20)",
+            "tsp_markers_osrm{}".format(self.nb_route), "memory")
+        symbol = QgsSymbolV2.defaultSymbol(self.tsp_marker_layer.geometryType())
+
+        ordered_pts = [coords[i] for i in self.parsed['trips'][idx]['permutation']]
+        marker_rules = []
+        features = []
+        for nb, pt in enumerate(ordered_pts):
+            ft = QgsFeature()
+            ft.setGeometry(QgsGeometry.fromPoint(QgsPoint(pt)))
+            ft.setAttributes([nb, nb+1, coords.index(pt)])
+            features.append(ft)
+            marker_rules.append([nb+1, 'TSP_nb = {}'.format(nb+1)])
+        self.tsp_marker_layer.dataProvider().addFeatures(features)
+
+        renderer = QgsRuleBasedRendererV2(symbol)
+        root_rule = renderer.rootRule()
+        for label, expression in marker_rules:
+            rule = root_rule.children()[0].clone()
+            rule.setLabel(str(label))
+            rule.setFilterExpression(expression)
+            rule.symbol().setColor(QtGui.QColor("yellow"))
+            rule.symbol().setSize(4.5)
+            s = QgsFontMarkerSymbolLayerV2()
+            s.setSize(4)
+            s.setOffset(QPointF(0.25, -0.45))
+            s.setCharacter('{}'.format(label))
+            rule.symbol().appendSymbolLayer(s)
+            root_rule.appendChild(rule)
+
+        root_rule.removeChildAt(0)
+        self.tsp_marker_layer.setRendererV2(renderer)
+        QgsMapLayerRegistry.instance().addMapLayer(self.tsp_marker_layer)
+#        self.iface.setActiveLayer(tsp_marker_layer)
+#        self.iface.zoomToActiveLayer()
 
 class OSRMDialog(QtGui.QDialog, FORM_CLASS, TemplateOsrm):
     def __init__(self, iface, parent=None):
@@ -593,11 +650,20 @@ class OSRM_access_Dialog(QtGui.QDialog, FORM_CLASS_a, TemplateOsrm):
         self.intermediateEmit = QgsMapToolEmitPoint(self.canvas)
         self.pushButton_fetch.clicked.connect(self.get_access_isochrones)
         self.pushButtonClear.clicked.connect(self.clear_all_isochrone)
+        self.lineEdit_xyO.textChanged.connect(self.change_nb_center)
         self.nb_isocr = 0
         self.host = None
         self.progress = None
         self.max_points = 7420
         self.http_headers = HTTP_HEADERS
+
+    def change_nb_center(self):
+        nb_center = self.lineEdit_xyO.text().count('(')
+        self.textBrowser_nb_centers.setHtml(
+            """<p style=" margin-top:0px; margin-bottom:0px;"""
+            """margin-left:0px; margin-right:0px; -qt-block-indent:0; """
+            """text-indent:0px;"><span style=" font-style:italic;">"""
+            """{} center(s) selected</span></p>""".format(nb_center))
 
     def clear_all_isochrone(self):
         self.lineEdit_xyO.setText('')
@@ -623,6 +689,7 @@ class OSRM_access_Dialog(QtGui.QDialog, FORM_CLASS_a, TemplateOsrm):
                 crsSrc, QgsCoordinateReferenceSystem(4326))
             point = xform.transform(point)
         tmp = self.lineEdit_xyO.text()
+        self.change_nb_center()
         self.lineEdit_xyO.setText(', '.join([tmp, repr(point)]))
 
     @pyqtSlot()
@@ -779,8 +846,6 @@ class OSRM_access_Dialog(QtGui.QDialog, FORM_CLASS_a, TemplateOsrm):
 
             matrix, src_coords, snapped_dest_coords = rectangular_light_table(
                 point, coords_grid, conn, self.http_headers)
-#            snapped_dest_coords.extend(tmp)
-#            times = np.append(times, (matrix[0] / 600.0).round(2)[:])
             times = (matrix[0] / 600.0).round(2)
             prog_val += 4 * (nb/len(points))
             self.progress.setValue(prog_val)

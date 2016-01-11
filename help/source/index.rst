@@ -44,6 +44,8 @@ If used to request the public API you have to adhere to the `API Usage Policy`_ 
 
 Example
 =======
+All images of this page are displayed on OpenStreetMap tiles (© OpenStreetMap contributors) and all route computations are done with Open Source Routing Machine.
+
 Find a route
 ------------
 **Display a simple route from OSRM (with support of viapoints, alternatives roads and route instructions)**:

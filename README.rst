@@ -26,6 +26,8 @@ If used to request the public API you have to adhere to the `API Usage Policy`_ 
 
 Example
 =======
+All images of this page are displayed on OpenStreetMap tiles (© OpenStreetMap contributors) and all route computations are done with Open Source Routing Machine.
+
 Find a route
 ------------
 **Display a simple route from OSRM (with support of viapoints, alternatives roads and route instructions)**:
@@ -76,6 +78,7 @@ If the information computed by this plugin is intend to be reused, you have to p
 
 - All the routes/time matrix displayed are computed by the underlying routing engine `OSRM`_.
 - Route computed by the OSRM public API (and probably by your instance) rely on `OpenStreetMap`_ dataset which is under `ODbL`_.
+
 
 
 Changelog

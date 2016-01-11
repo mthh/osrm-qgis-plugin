@@ -300,7 +300,7 @@ class OSRM(object):
     def polycentric(self):
         QMessageBox.information(
                 self.iface.mainWindow(), 'Info',
-                "Expetimental :\n\nAdd other source points and compute "
+                "Experimental :\n\nAdd other source points and compute "
                 "polycentric accessibility isochrones")
         self.get_intermediate()
 
@@ -315,3 +315,6 @@ class OSRM(object):
 
 # TODO :
 # - ensure that the MapToolEmitPoint is unset when the plugin window is closed
+# - write a function to ensure that the marker layer is in the top of the route
+#    layer (in TSP dialog)
+#

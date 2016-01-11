@@ -54,7 +54,8 @@ UI_FILES = \
 	osrm_dialog_base.ui \
 	osrm_table_dialog_base.ui \
 	osrm_access_dialog_base.ui \
-	osrm_batch_route.ui
+	osrm_batch_route.ui \
+	osrm_dialog_tsp.ui
 
 EXTRAS = \
 	metadata.txt \
@@ -245,6 +246,7 @@ pep8:
 	@echo
 	@echo "-----------"
 	@echo "PEP8 issues"
+
 	@echo "-----------"
 	@pep8 --repeat --ignore=E203,E121,E122,E123,E124,E125,E126,E127,E128 --exclude $(PEP8EXCLUDE) . || true
 	@echo "-----------"

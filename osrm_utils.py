@@ -6,7 +6,7 @@ Utilities function used for the plugin.
 
 ----------
 
-Contain two pieces of code for which i'm not the author :
+Contains two pieces of code for which i'm not the author :
  - lru_cache functionnality, written by Raymond Hettinger (MIT licence, 2012)
  - PolylineCodec class, written by Bruno M. Custodio (MIT licence, 2014)
 
@@ -33,13 +33,15 @@ try:
 except:
     import json
 
-__all__ = ['check_host', 'save_dialog', 'save_dialog_geo', 'qgsgeom_from_mpl_collec',
+__all__ = ['check_host', 'save_dialog', 'save_dialog_geo',
+           'qgsgeom_from_mpl_collec', 'prepare_route_symbol',
            'interpolate_from_times', 'get_coords_ids', 'chunk_it',
            'accumulated_time', 'pts_ref',
            'return_osrm_table_version', 'decode_geom', 'h_light_table',
            'rectangular_light_table', 'decode_geom_to_pts', 'h_locate',
            'make_regular_points', 'get_search_frame', 'get_isochrones_colors',
            'PolylineCodec', 'lru_cache']
+
 
 def check_host(url):
     """ Helper function to get the hostname in desired format """
@@ -51,7 +53,7 @@ def check_host(url):
         host = url
     elif 'http://' in url[:7] and url[-1] == '/':
         host = url[7:-1]
-    elif 'http://' in tmp[:7]:
+    elif 'http://' in url[:7]:
         host = url[7:]
     else:
         host = url
@@ -94,6 +96,16 @@ def save_dialog_geo(filtering="ESRI Shapefile (*.shp *.SHP)"):
     settings.setValue("/UI/lastShapefileDir",
                       QFileInfo(unicode(files[0])).absolutePath())
     return (unicode(files[0]), unicode(fileDialog.encoding()))
+
+
+def prepare_route_symbol(nb_route):
+    colors = ['#1f78b4', '#ffff01', '#ff7f00',
+              '#fb9a99', '#b2df8a', '#e31a1c']
+    p = nb_route % len(colors)
+    my_symb = QgsSymbolV2.defaultSymbol(1)
+    my_symb.setColor(QColor(colors[p]))
+    my_symb.setWidth(1.2)
+    return my_symb
 
 
 def qgsgeom_from_mpl_collec(collections):
@@ -390,6 +402,7 @@ def get_search_frame(point, max_time):
     xmax, ymax = xform.transform(QgsPoint(xmax, ymax))
     return xmin, ymin, xmax, ymax
 
+
 def get_isochrones_colors(nb_features):
     """ Ugly "helper" function to rewrite to avoid repetitions """
     return {1: ('#a6d96a'),
@@ -421,7 +434,14 @@ def get_isochrones_colors(nb_features):
                  '#d73027', '#bb2921', '#a50026'),
             14: ('#006837', '#1a9850', '#66bd63', '#a6d96a', '#d9ef8b',
                  '#e7ef88', '#ffffbf', '#fff6a0', '#fee08b', '#fdae61',
-                 '#f46d43', '#d73027', '#bb2921', '#a50026')
+                 '#f46d43', '#d73027', '#bb2921', '#a50026'),
+            15: ('#006837', '#1a9850', '#66bd63', '#a6d96a', '#d9ef8b',
+                 '#e7ef88', '#ffffbf', '#ffffbf', '#fff6a0', '#fee08b',
+                 '#fdae61', '#f46d43', '#d73027', '#bb2921', '#a50026'),
+            16: ('#006837', '#1a9850', '#66bd63', '#a6d96a',
+                 '#d9ef8b', '#e7ef88', '#ffffbf', '#ffffbf', '#ffffbf',
+                 '#fff6a0', '#fee08b', '#fdae61', '#f46d43', '#d73027',
+                 '#bb2921', '#a50026'),
             }[nb_features]
 
 

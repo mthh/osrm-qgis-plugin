@@ -97,6 +97,7 @@ class TemplateOsrm(object):
         self.canvas.unsetMapTool(self.originEmit)
         self.lineEdit_xyO.setText(str(point))
 
+
 class OSRM_DialogTSP(QtGui.QDialog, FORM_CLASS_tsp, TemplateOsrm):
     def __init__(self, iface, parent=None):
         super(OSRM_DialogTSP, self).__init__(parent)

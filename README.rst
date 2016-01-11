@@ -67,6 +67,7 @@ Compute many *viaroute*
 Display the solution of the Travelling Salesman Problem
 -------------------------------------------------------
 **Display the result of the Travelling Salesman Problem computed by OSRM**:
+
 .. image:: help/source/img/tsp.jpg
    :scale: 10 %
    :alt: isochrone illustration

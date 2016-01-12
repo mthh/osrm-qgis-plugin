@@ -40,7 +40,8 @@ SOURCES = \
 	__init__.py \
 	osrm.py \
 	osrm_dialog.py \
-	osrm_utils.py
+	osrm_utils.py \
+	osrm_utils_extern.py
 
 PLUGINNAME = OSRM
 
@@ -48,7 +49,8 @@ PY_FILES = \
 	__init__.py \
 	osrm.py \
 	osrm_dialog.py \
-	osrm_utils.py
+	osrm_utils.py \
+	osrm_utils_extern.py
 
 UI_FILES = \
 	osrm_dialog_base.ui \

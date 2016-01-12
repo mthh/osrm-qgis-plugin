@@ -224,7 +224,8 @@ class OSRM(object):
             "<p><b>(Unofficial) OSRM plugin for qgis</b><br><br>"
             "Author: mthh, 2015<br>Licence : GNU GPL v2<br><br><br>Underlying "
             "routing engine is <a href='http://project-osrm.org'>OSRM</a>"
-            "(Open Source Routing Engine) :<br>- Based on OpenStreetMap "
+            "(Open Source Routing Engine) :<br>- Based on <a href='http://"
+            "www.openstreetmap.org/copyright'>OpenStreetMap</a> "
             "dataset<br>- Easy to start a local instance<br>"
             "- Pretty fast engine (based on contraction hierarchies and mainly"
             " writen in C++)<br>- Mainly authored by D. Luxen and C. "
@@ -317,4 +318,3 @@ class OSRM(object):
 # - ensure that the MapToolEmitPoint is unset when the plugin window is closed
 # - write a function to ensure that the marker layer is in the top of the route
 #    layer (in TSP dialog)
-#

@@ -3,7 +3,7 @@
 
 Overview
 ========
-Tiny QGIS plug-in allowing to retrieve and display data from an (ideally locally based) `OSRM`_ web service.
+Tiny `QGIS`_ plug-in allowing to retrieve and display data from an (ideally locally based) `OSRM`_ web service.
 
 This plug-in is in its early stage of development and the code is hosted `on github`_.
 
@@ -11,7 +11,7 @@ Current version : 0.0.1
 
 Functionality 
 =============
-- Find a route.
+- Find a route
 - Get a time matrix
 - Make accessibility isochrones
 - Solve the Travelling Salesman Problem
@@ -22,7 +22,7 @@ Usage
 =====
 This plug-in is primarily aimed to be used on a local instance of OSRM.
 
-If used to request the public API you have to adhere to the `API Usage Policy`_ (which include no heavy usage, like )
+If used to request the public API you have to adhere to the `API Usage Policy`_ (which include no heavy usage, like computing many `/viaroute` with this plug-in)
 
 Example
 =======
@@ -101,3 +101,4 @@ Latest:
 .. _on github: https://mthh.github.com/osrm-qgis-plugin/
 .. _OpenStreetMap: http://www.openstreetmap.org/about
 .. _ODbL: http://www.openstreetmap.org/copyright
+.. _QGIS: http://www.qgis.org

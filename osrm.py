@@ -215,26 +215,6 @@ class OSRM(object):
         del self.toolbar
 
     @pyqtSlot()
-    def print_about(self):
-        mbox = QMessageBox(self.iface.mainWindow())
-        mbox.setIcon(QMessageBox.Information)
-        mbox.setWindowTitle('About')
-        mbox.setTextFormat(Qt.RichText)
-        mbox.setText(
-            "<p><b>(Unofficial) OSRM plugin for qgis</b><br><br>"
-            "Author: mthh, 2015<br>Licence : GNU GPL v2<br><br><br>Underlying "
-            "routing engine is <a href='http://project-osrm.org'>OSRM</a>"
-            "(Open Source Routing Engine) :<br>- Based on <a href='http://"
-            "www.openstreetmap.org/copyright'>OpenStreetMap</a> "
-            "dataset<br>- Easy to start a local instance<br>"
-            "- Pretty fast engine (based on contraction hierarchies and mainly"
-            " writen in C++)<br>- Mainly authored by D. Luxen and C. "
-            "Vetter<br>(<a href='http://project-osrm.org'>http://project-osrm"
-            ".org</a> or <a href='https://github.com/Project-OSRM/osrm"
-            "-backend#references-in-publications'>on GitHub</a>)<br></p>")
-        mbox.open()
-
-    @pyqtSlot()
     def run_route(self):
         """Run the window to compute a single viaroute"""
         self.dlg = OSRMDialog(iface)
@@ -253,7 +233,7 @@ class OSRM(object):
         self.dlg.pushButtonOrigin.clicked.connect(self.get_origin)
         self.dlg.pushButtonIntermediate.clicked.connect(self.get_intermediate)
         self.dlg.pushButtonDest.clicked.connect(self.get_destination)
-        self.dlg.pushButton_about.clicked.connect(self.print_about)
+        self.dlg.pushButton_about.clicked.connect(self.dlg.print_about)
         self.dlg.show()
 
     @pyqtSlot()
@@ -261,21 +241,21 @@ class OSRM(object):
         """Run the window to compute many viaroute"""
         self.nb_done = 0
         self.dlg = OSRM_batch_route_Dialog(iface)
-        self.dlg.pushButton_about.clicked.connect(self.print_about)
+        self.dlg.pushButton_about.clicked.connect(self.dlg.print_about)
         self.dlg.show()
 
     @pyqtSlot()
     def run_table(self):
         """Run the window for the table function"""
         self.dlg = OSRM_table_Dialog(iface)
-        self.dlg.pushButton_about.clicked.connect(self.print_about)
+        self.dlg.pushButton_about.clicked.connect(self.dlg.print_about)
         self.dlg.show()
 
     @pyqtSlot()
     def run_tsp(self):
         """Run the window for making accessibility isochrones"""
         self.dlg = OSRM_DialogTSP(iface)
-        self.dlg.pushButton_about.clicked.connect(self.print_about)
+        self.dlg.pushButton_about.clicked.connect(self.dlg.print_about)
         self.dlg.show()
 
     @pyqtSlot()
@@ -293,7 +273,7 @@ class OSRM(object):
             self.dlg.store_intermediate_acces
             )
         self.dlg.pushButtonOrigin.clicked.connect(self.get_origin)
-        self.dlg.pushButton_about.clicked.connect(self.print_about)
+        self.dlg.pushButton_about.clicked.connect(self.dlg.print_about)
         self.dlg.toolButton_poly.clicked.connect(self.polycentric)
         self.dlg.show()
 

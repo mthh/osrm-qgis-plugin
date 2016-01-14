@@ -6,7 +6,7 @@
    <rect>
     <x>0</x>
     <y>0</y>
-    <width>454</width>
+    <width>450</width>
     <height>505</height>
    </rect>
   </property>
@@ -151,10 +151,13 @@
    </property>
   </widget>
   <widget class="QgsFieldComboBox" name="FieldOriginX">
+   <property name="enabled">
+    <bool>false</bool>
+   </property>
    <property name="geometry">
     <rect>
      <x>70</x>
-     <y>210</y>
+     <y>217</y>
      <width>151</width>
      <height>20</height>
     </rect>
@@ -164,10 +167,13 @@
    </property>
   </widget>
   <widget class="QgsFieldComboBox" name="FieldOriginY">
+   <property name="enabled">
+    <bool>false</bool>
+   </property>
    <property name="geometry">
     <rect>
      <x>70</x>
-     <y>233</y>
+     <y>240</y>
      <width>151</width>
      <height>20</height>
     </rect>
@@ -177,10 +183,13 @@
    </property>
   </widget>
   <widget class="QgsFieldComboBox" name="FieldDestinationX">
+   <property name="enabled">
+    <bool>false</bool>
+   </property>
    <property name="geometry">
     <rect>
      <x>230</x>
-     <y>210</y>
+     <y>217</y>
      <width>151</width>
      <height>20</height>
     </rect>
@@ -190,10 +199,13 @@
    </property>
   </widget>
   <widget class="QgsFieldComboBox" name="FieldDestinationY">
+   <property name="enabled">
+    <bool>false</bool>
+   </property>
    <property name="geometry">
     <rect>
      <x>230</x>
-     <y>233</y>
+     <y>240</y>
      <width>151</width>
      <height>20</height>
     </rect>
@@ -203,12 +215,15 @@
    </property>
   </widget>
   <widget class="QLabel" name="label_6">
+   <property name="enabled">
+    <bool>false</bool>
+   </property>
    <property name="geometry">
     <rect>
-     <x>110</x>
-     <y>193</y>
-     <width>71</width>
-     <height>16</height>
+     <x>80</x>
+     <y>200</y>
+     <width>131</width>
+     <height>20</height>
     </rect>
    </property>
    <property name="font">
@@ -225,12 +240,15 @@
    </property>
   </widget>
   <widget class="QLabel" name="label_7">
+   <property name="enabled">
+    <bool>false</bool>
+   </property>
    <property name="geometry">
     <rect>
-     <x>250</x>
-     <y>193</y>
-     <width>101</width>
-     <height>16</height>
+     <x>240</x>
+     <y>200</y>
+     <width>131</width>
+     <height>20</height>
     </rect>
    </property>
    <property name="font">
@@ -247,10 +265,13 @@
    </property>
   </widget>
   <widget class="QLabel" name="label_8">
+   <property name="enabled">
+    <bool>false</bool>
+   </property>
    <property name="geometry">
     <rect>
      <x>30</x>
-     <y>213</y>
+     <y>220</y>
      <width>31</width>
      <height>16</height>
     </rect>
@@ -269,10 +290,13 @@
    </property>
   </widget>
   <widget class="QLabel" name="label_9">
+   <property name="enabled">
+    <bool>false</bool>
+   </property>
    <property name="geometry">
     <rect>
      <x>30</x>
-     <y>233</y>
+     <y>240</y>
      <width>31</width>
      <height>16</height>
     </rect>
@@ -291,6 +315,9 @@
    </property>
   </widget>
   <widget class="Line" name="line">
+   <property name="enabled">
+    <bool>true</bool>
+   </property>
    <property name="geometry">
     <rect>
      <x>10</x>
@@ -307,7 +334,7 @@
    <property name="geometry">
     <rect>
      <x>10</x>
-     <y>110</y>
+     <y>150</y>
      <width>431</width>
      <height>20</height>
     </rect>
@@ -317,10 +344,13 @@
    </property>
   </widget>
   <widget class="QSplitter" name="splitter">
+   <property name="enabled">
+    <bool>true</bool>
+   </property>
    <property name="geometry">
     <rect>
      <x>50</x>
-     <y>163</y>
+     <y>170</y>
      <width>301</width>
      <height>27</height>
     </rect>
@@ -329,6 +359,9 @@
     <enum>Qt::Horizontal</enum>
    </property>
    <widget class="QLabel" name="label_5">
+    <property name="enabled">
+     <bool>false</bool>
+    </property>
     <property name="font">
      <font>
       <family>MS Shell Dlg 2</family>
@@ -343,6 +376,9 @@
     </property>
    </widget>
    <widget class="QgsMapLayerComboBox" name="ComboBoxCsv">
+    <property name="enabled">
+     <bool>false</bool>
+    </property>
     <property name="filters">
      <set>QgsMapLayerProxyModel::NoGeometry</set>
     </property>
@@ -395,53 +431,14 @@
     </item>
    </layout>
   </widget>
-  <widget class="QCheckBox" name="check_csv">
-   <property name="geometry">
-    <rect>
-     <x>10</x>
-     <y>135</y>
-     <width>421</width>
-     <height>21</height>
-    </rect>
+  <widget class="QFrame" name="frame_pts_layer">
+   <property name="enabled">
+    <bool>true</bool>
    </property>
-   <property name="font">
-    <font>
-     <family>Arial</family>
-     <pointsize>10</pointsize>
-     <weight>75</weight>
-     <bold>true</bold>
-    </font>
-   </property>
-   <property name="text">
-    <string>From a .csv file of paired Origins-Destinations</string>
-   </property>
-  </widget>
-  <widget class="QCheckBox" name="check_two_layers">
-   <property name="geometry">
-    <rect>
-     <x>10</x>
-     <y>30</y>
-     <width>411</width>
-     <height>31</height>
-    </rect>
-   </property>
-   <property name="font">
-    <font>
-     <family>Arial</family>
-     <pointsize>10</pointsize>
-     <weight>75</weight>
-     <bold>true</bold>
-    </font>
-   </property>
-   <property name="text">
-    <string>Between two layers of points</string>
-   </property>
-  </widget>
-  <widget class="QWidget" name="layoutWidget">
    <property name="geometry">
     <rect>
      <x>30</x>
-     <y>70</y>
+     <y>100</y>
      <width>391</width>
      <height>49</height>
     </rect>
@@ -449,6 +446,9 @@
    <layout class="QGridLayout" name="gridLayout_2">
     <item row="0" column="1">
      <widget class="QLabel" name="label_2">
+      <property name="enabled">
+       <bool>false</bool>
+      </property>
       <property name="font">
        <font>
         <family>MS Shell Dlg 2</family>
@@ -462,6 +462,15 @@
     </item>
     <item row="1" column="1">
      <widget class="QgsMapLayerComboBox" name="ComboBoxDestination">
+      <property name="enabled">
+       <bool>false</bool>
+      </property>
+      <property name="minimumSize">
+       <size>
+        <width>0</width>
+        <height>22</height>
+       </size>
+      </property>
       <property name="font">
        <font>
         <family>Arial</family>
@@ -474,6 +483,15 @@
     </item>
     <item row="1" column="0">
      <widget class="QgsMapLayerComboBox" name="ComboBoxOrigin">
+      <property name="enabled">
+       <bool>false</bool>
+      </property>
+      <property name="minimumSize">
+       <size>
+        <width>0</width>
+        <height>22</height>
+       </size>
+      </property>
       <property name="font">
        <font>
         <family>Arial</family>
@@ -486,6 +504,9 @@
     </item>
     <item row="0" column="0">
      <widget class="QLabel" name="label">
+      <property name="enabled">
+       <bool>false</bool>
+      </property>
       <property name="font">
        <font>
         <family>MS Shell Dlg 2</family>
@@ -502,15 +523,51 @@
     </item>
    </layout>
   </widget>
-  <zorder>check_csv</zorder>
-  <zorder>check_two_layers</zorder>
+  <widget class="QComboBox" name="comboBox_method">
+   <property name="geometry">
+    <rect>
+     <x>30</x>
+     <y>50</y>
+     <width>391</width>
+     <height>27</height>
+    </rect>
+   </property>
+   <item>
+    <property name="text">
+     <string>Choose a method...</string>
+    </property>
+   </item>
+   <item>
+    <property name="text">
+     <string>Routes between two layers of points</string>
+    </property>
+   </item>
+   <item>
+    <property name="text">
+     <string>Routes from a .csv file of paired origins-destinations</string>
+    </property>
+   </item>
+  </widget>
+  <widget class="Line" name="line_3">
+   <property name="geometry">
+    <rect>
+     <x>10</x>
+     <y>80</y>
+     <width>431</width>
+     <height>20</height>
+    </rect>
+   </property>
+   <property name="orientation">
+    <enum>Qt::Horizontal</enum>
+   </property>
+  </widget>
   <zorder>splitter</zorder>
   <zorder>layoutWidget</zorder>
   <zorder>layoutWidget</zorder>
   <zorder>pushButton_about</zorder>
   <zorder>close_button_box</zorder>
   <zorder>label_subtitle</zorder>
-  <zorder>layoutWidget</zorder>
+  <zorder>frame_pts_layer</zorder>
   <zorder>FieldOriginX</zorder>
   <zorder>FieldOriginY</zorder>
   <zorder>FieldDestinationX</zorder>
@@ -521,15 +578,12 @@
   <zorder>label_9</zorder>
   <zorder>line</zorder>
   <zorder>line_2</zorder>
+  <zorder>comboBox_method</zorder>
+  <zorder>line_3</zorder>
  </widget>
  <customwidgets>
   <customwidget>
    <class>QgsFieldComboBox</class>
-   <extends>QComboBox</extends>
-   <header>qgis.gui</header>
-  </customwidget>
-   <customwidget>
-   <class>QgsMapLayerProxyModel</class>
    <extends>QComboBox</extends>
    <header>qgis.gui</header>
   </customwidget>
@@ -540,6 +594,11 @@
   </customwidget>
   <customwidget>
    <class>QgsFieldProxyModel</class>
+   <extends>QComboBox</extends>
+   <header>qgis.gui</header>
+  </customwidget>
+   <customwidget>
+   <class>QgsMapLayerProxyModel</class>
    <extends>QComboBox</extends>
    <header>qgis.gui</header>
   </customwidget>

@@ -41,7 +41,6 @@ from qgis.core import (
     )
 from osrm_utils import *
 from osrm_utils_extern import lru_cache
-#import json
 
 
 FORM_CLASS, _ = uic.loadUiType(os.path.join(
@@ -219,8 +218,6 @@ class OSRM_DialogTSP(QtGui.QDialog, FORM_CLASS_tsp, TemplateOsrm):
         root_rule.removeChildAt(0)
         self.tsp_marker_lr.setRendererV2(renderer)
         QgsMapLayerRegistry.instance().addMapLayer(self.tsp_marker_lr)
-#        self.iface.setActiveLayer(tsp_marker_lr)
-#        self.iface.zoomToActiveLayer()
 
 
 class OSRMDialog(QtGui.QDialog, FORM_CLASS, TemplateOsrm):
@@ -490,7 +487,8 @@ class OSRMDialog(QtGui.QDialog, FORM_CLASS, TemplateOsrm):
             if self.dlg.checkBox_instruction.isChecked():
                 for i in range(self.nb_alternative):
                     pr_instruct, instruct_layer = \
-                       self.prep_instruction(i + 1, pr_instruct, instruct_layer)
+                       self.prep_instruction(
+                           i + 1, pr_instruct, instruct_layer)
         return
 
 
@@ -681,16 +679,14 @@ class OSRM_access_Dialog(QtGui.QDialog, FORM_CLASS_a, TemplateOsrm):
         )
         if 'clicking' in text:
             values = (True, True, True, True, False, False, False, True)
-            for func, bool_value in zip(functions, values):
-                func(bool_value)
         elif 'selecting' in text:
             values = (False, False, False, False, True, True, True, True)
-            for func, bool_value in zip(functions, values):
-                func(bool_value)
         elif 'method' in text:
             values = (False, False, False, False, False, False, False, False)
-            for func, bool_value in zip(functions, values):
-                func(bool_value)
+        else:
+            return
+        for func, bool_value in zip(functions, values):
+            func(bool_value)
 
     def clear_all_isochrone(self):
         """
@@ -840,7 +836,7 @@ class OSRM_access_Dialog(QtGui.QDialog, FORM_CLASS_a, TemplateOsrm):
         except Exception as err:
             self.display_error(err, 1)
             return -1
-        self.max_points = 1770  # Lower number of requested points with old API
+        self.max_points = 1780  # Lower number of requested points with old API
         bounds = get_search_frame(point, max_time)
         coords_grid = make_regular_points(bounds, self.max_points)
         self.progress.setValue(0.1)
@@ -959,12 +955,7 @@ class OSRM_batch_route_Dialog(QtGui.QDialog, FORM_CLASS_b, TemplateOsrm):
         self.pushButtonReverse.clicked.connect(self.reverse_OD_batch)
         self.pushButtonBrowse.clicked.connect(self.output_dialog_geo)
         self.pushButtonRun.clicked.connect(self.get_batch_route)
-        self.check_two_layers.stateChanged.connect(
-            lambda st: self.check_csv.setCheckState(0) if (
-                st == 2 and self.check_csv.isChecked()) else None)
-        self.check_csv.stateChanged.connect(
-            lambda st: self.check_two_layers.setCheckState(0) if (
-                st == 2 and self.check_two_layers.isChecked()) else None)
+        self.comboBox_method.activated[str].connect(self.enable_functionnality)
         self.ComboBoxCsv.layerChanged.connect(self._set_layer_field_combo)
         self.nb_done = 0
 
@@ -981,9 +972,37 @@ class OSRM_batch_route_Dialog(QtGui.QDialog, FORM_CLASS_b, TemplateOsrm):
             return
         self.lineEdit_output.setText(self.filename)
 
+    def enable_functionnality(self, text):
+        functions = (
+            
+            self.ComboBoxOrigin.setEnabled, self.label_2.setEnabled,
+            self.ComboBoxDestination.setEnabled, self.label.setEnabled,
+            self.label_5.setEnabled, self.ComboBoxCsv.setEnabled,
+            self.FieldOriginX.setEnabled, self.FieldOriginY.setEnabled,
+            self.FieldDestinationX.setEnabled, self.label_6.setEnabled,
+            self.FieldDestinationY.setEnabled, self.label_7.setEnabled,
+            self.label_8.setEnabled, self.label_9.setEnabled
+        )
+        if 'layer' in text:
+            values = (True, True, True, True,
+                      False, False, False, False, False,
+                      False, False, False, False, False)
+        elif '.csv' in text:
+            values = (False, False, False, False,
+                      True, True, True, True, True,
+                      True, True, True, True, True)
+        elif 'method' in text:
+            values = (False, False, False, False,
+                      False, False, False, False, False,
+                      False, False, False, False, False)
+        else:
+            return
+        for func, bool_value in zip(functions, values):
+            func(bool_value)
+
     def _prepare_queries(self):
         """Get the coordinates for each viaroute to query"""
-        if self.check_two_layers.isChecked():
+        if self.ComboBoxOrigin.isEnabled():
             origin_layer = self.ComboBoxOrigin.currentLayer()
             destination_layer = self.ComboBoxDestination.currentLayer()
             if '4326' not in origin_layer.crs().authid():
@@ -1018,7 +1037,7 @@ class OSRM_batch_route_Dialog(QtGui.QDialog, FORM_CLASS_b, TemplateOsrm):
                     for origin in origin_ids_coords
                     for dest in destination_ids_coords]
 
-        elif self.check_csv.isChecked():  # If the source file is a .csv :
+        elif self.FieldOriginX.isEnabled():  # If the source file is a .csv :
             layer = self.ComboBoxCsv.currentLayer()
             xo_col = self.FieldOriginX.currentField()
             yo_col = self.FieldOriginY.currentField()
@@ -1027,17 +1046,14 @@ class OSRM_batch_route_Dialog(QtGui.QDialog, FORM_CLASS_b, TemplateOsrm):
             return [(str(ft.attribute(yo_col)), str(ft.attribute(xo_col)),
                      str(ft.attribute(yd_col)), str(ft.attribute(xd_col)))
                     for ft in layer.getFeatures()]
-        else:
-            QtGui.QMessageBox.information(
-                self.iface.mainWindow(), 'Error',
-                "Choose a method between points layers / csv file")
+
             return -1
 
     def reverse_OD_batch(self):
         """Helper function to dispatch to the proper method"""
-        if self.check_csv.isChecked():
+        if self.FieldOriginX.isEnabled():
             self.switch_OD_fields()
-        elif self.check_two_layers.isChecked():
+        elif self.ComboBoxOrigin.isEnabled():
             self.swtich_OD_box()
         else:
             self.switch_OD_fields()

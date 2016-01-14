@@ -243,7 +243,7 @@ def return_osrm_table_version(host, coord, headers=None):
             return 'old'
     except Exception as err:
         print(err)
-        return 'error'
+        return err
 
 
 def decode_geom(encoded_polyline):

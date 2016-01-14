@@ -782,6 +782,13 @@ class OSRM_access_Dialog(QtGui.QDialog, FORM_CLASS_a, TemplateOsrm):
             polygons, levels = self.prep_accessibility_new_osrm(
                 pts, self.host, inter_time, max_time)
         else:
+            self.iface.messageBar().pushMessage(
+                "Error", "An error occured when trying to contact the OSRM "
+                "instance (see QGis log for error traceback)",
+                duration=10)
+            QgsMessageLog.logMessage(
+                'OSRM-plugin error report :\n {}'.format(version),
+                level=QgsMessageLog.WARNING)
             return -1
 
         isochrone_layer = QgsVectorLayer(

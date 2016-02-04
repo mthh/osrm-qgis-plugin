@@ -25,9 +25,8 @@ import os
 import csv
 import numpy as np
 from PyQt4 import QtGui, uic
-from PyQt4.QtCore import pyqtSlot, Qt, QPointF
+from PyQt4.QtCore import pyqtSlot, Qt, QPointF, QThreadPool, QEventLoop
 from re import match
-from sys import version_info
 from httplib import HTTPConnection
 from codecs import open as codecs_open
 from qgis.gui import QgsMapLayerProxyModel, QgsMapToolEmitPoint
@@ -35,13 +34,13 @@ from qgis.core import (
     QgsMessageLog, QgsCoordinateTransform, QgsFeature,
     QgsCoordinateReferenceSystem, QgsMapLayerRegistry, QgsProject,
     QgsVectorLayer, QgsVectorFileWriter, QgsPoint, QgsFontMarkerSymbolLayerV2,
-    QgsGeometry, QgsRuleBasedRendererV2, QgsSymbolV2, QGis,
+    QgsGeometry, QgsRuleBasedRendererV2, QgsSymbolV2,
     QgsGraduatedSymbolRendererV2, QgsRendererRangeV2, QgsFillSymbolV2,
     QgsSingleSymbolRendererV2
     )
 from osrm_utils import *
 from osrm_utils_extern import lru_cache
-
+from time import sleep, time as t_time
 
 FORM_CLASS, _ = uic.loadUiType(os.path.join(
     os.path.dirname(__file__), 'osrm_dialog_base.ui'))
@@ -57,13 +56,6 @@ FORM_CLASS_b, _ = uic.loadUiType(os.path.join(
 
 FORM_CLASS_tsp, _ = uic.loadUiType(os.path.join(
     os.path.dirname(__file__), 'osrm_dialog_tsp.ui'))
-
-HTTP_HEADERS = {
-    'connection': 'keep-alive',
-    'User-Agent': ' '.join(
-        ['QGIS-desktop', QGis.QGIS_VERSION, '/',
-         'Python-httplib', str(version_info[:3])[1:-1].replace(', ', '.')])
-    }
 
 
 class OSRM_DialogTSP(QtGui.QDialog, FORM_CLASS_tsp, TemplateOsrm):
@@ -741,6 +733,8 @@ class OSRM_access_Dialog(QtGui.QDialog, FORM_CLASS_a, TemplateOsrm):
             desired time intervals (using matplotlib library),
         - render the polygon.
         """
+        elapsed_time = {}
+        st = t_time()
         try:
             self.host = check_host(self.lineEdit_host.text())
         except ValueError:
@@ -749,14 +743,20 @@ class OSRM_access_Dialog(QtGui.QDialog, FORM_CLASS_a, TemplateOsrm):
 
         if 'clicking' in self.comboBox_method.currentText():
             pts = self.get_points_from_canvas()
+            #Todo: prévoir le cas ou fetch est cliqué avant qu'une coordonnées soit saisie
         elif 'selecting' in self.comboBox_method.currentText():
             layer = self.comboBox_pointlayer.currentLayer()
-            pts, _ = get_coords_ids(layer, '')
+            pts, _ = get_coords_ids(
+                layer, '', on_selected=self.checkBox_selectedFt.isChecked())
             pts = tuple(pts)
-        max_time = self.spinBox_max.value()
-        inter_time = self.spinBox_intervall.value()
+        # Time params as passed as self arguments to allow lru_cache decorator
+        # to do his job when querying an isochrone for the same location 
+        # but with a different time interval
+        self.time_param = {'max': self.spinBox_max.value(),
+                           'interval': self.spinBox_intervall.value()}
+#        max_time = self.spinBox_max.value()
+#        inter_time = self.spinBox_intervall.value()
         self.make_prog_bar()
-
         # Fetch the version of the running OSRM instance by making a "/locate?"
         # request (if it fails its OSRM > 4.9.0 and allow us to make
         # rectangular "table")
@@ -776,21 +776,28 @@ class OSRM_access_Dialog(QtGui.QDialog, FORM_CLASS_a, TemplateOsrm):
                 self.lineEdit_xyO.setText(str(pts))
                 return
             else:
+                elapsed_time['starting'] = str(round(t_time() - st, 2))+'s'
+                st = t_time()
                 polygons, levels = self.prep_accessibility_old_osrm(
-                    pts, self.host, inter_time, max_time)
+                    pts, self.host)
+                elapsed_time['query'] =  str(round(t_time() - st, 2))+'s'
         elif 'new' in version:
+            elapsed_time['starting'] = str(round(t_time() - st, 2))+'s'
+            st = t_time()
             polygons, levels = self.prep_accessibility_new_osrm(
-                pts, self.host, inter_time, max_time)
+                pts, self.host)
+            elapsed_time['query'] =  str(round(t_time() - st, 2))+'s'
         else:
-            self.iface.messageBar().pushMessage(
-                "Error", "An error occured when trying to contact the OSRM "
-                "instance (see QGis log for error traceback)",
-                duration=10)
             QgsMessageLog.logMessage(
                 'OSRM-plugin error report :\n {}'.format(version),
                 level=QgsMessageLog.WARNING)
+            QtGui.QMessageBox.information(
+                self.iface.mainWindow(), 'Error',
+                "An error occured when trying to contact osrm instance at {}\n"
+                "See QGis log for error traceback".format(self.host))
+            self.iface.messageBar().clearWidgets()
             return -1
-
+        st = t_time()
         isochrone_layer = QgsVectorLayer(
             "MultiPolygon?crs=epsg:4326&field=id:integer"
             "&field=min:integer(10)"
@@ -798,24 +805,29 @@ class OSRM_access_Dialog(QtGui.QDialog, FORM_CLASS_a, TemplateOsrm):
             "isochrone_osrm_{}".format(self.nb_isocr), "memory")
         data_provider = isochrone_layer.dataProvider()
         # Add the features to the layer to display :
+
         features = []
         self.progress.setValue(8.5)
         for i, poly in enumerate(polygons):
             ft = QgsFeature()
             ft.setGeometry(poly)
-            ft.setAttributes([i, levels[i] - inter_time, levels[i]])
+            ft.setAttributes(
+                [i, levels[i] - self.time_param['interval'], levels[i]])
             features.append(ft)
         data_provider.addFeatures(features[::-1])
         self.nb_isocr += 1
         self.progress.setValue(9.5)
 
         # Render the value :
-        renderer = self.prepare_renderer(levels, inter_time, len(polygons))
+        renderer = self.prepare_renderer(
+            levels, self.time_param['interval'], len(polygons))
         isochrone_layer.setRendererV2(renderer)
         isochrone_layer.setLayerTransparency(25)
+        elapsed_time['rendering'] =  str(round(t_time() - st, 2))+'s'
         self.iface.messageBar().clearWidgets()
         QgsMapLayerRegistry.instance().addMapLayer(isochrone_layer)
         self.iface.setActiveLayer(isochrone_layer)
+        print('Debug timings : \n\n{}'.format(elapsed_time.items()))
 
     @staticmethod
     def prepare_renderer(levels, inter_time, lenpoly):
@@ -836,8 +848,10 @@ class OSRM_access_Dialog(QtGui.QDialog, FORM_CLASS_a, TemplateOsrm):
         return QgsGraduatedSymbolRendererV2(expression, ranges)
 
     @lru_cache(maxsize=20)
-    def prep_accessibility_old_osrm(self, point, url, inter_time, max_time):
+    def prep_accessibility_old_osrm(self, point, url):
         """Make the regular grid of points, snap them and compute tables"""
+        max_time = self.time_param['max']
+        inter_time = self.time_param['interval']
         try:
             conn = HTTPConnection(self.host)
         except Exception as err:
@@ -888,8 +902,11 @@ class OSRM_access_Dialog(QtGui.QDialog, FORM_CLASS_a, TemplateOsrm):
         polygons = qgsgeom_from_mpl_collec(collec_poly.collections)
         return polygons, levels
 
+    def process_result(self, task_res):
+        self.polygons.append(task_res)
+
     @lru_cache(maxsize=20)
-    def prep_accessibility_new_osrm(self, points, url, inter_time, max_time):
+    def prep_accessibility_new_osrm(self, points, url):
         """
         Make the regular grid of points and compute a table between them and
         and the source point, using the new OSRM table function for
@@ -897,56 +914,67 @@ class OSRM_access_Dialog(QtGui.QDialog, FORM_CLASS_a, TemplateOsrm):
         + experimental support for polycentric accessibility isochrones
         (or multiple isochrones from multiple origine in one time...)
         """
-        try:
-            conn = HTTPConnection(self.host)
-        except Exception as err:
-            self.display_error(err, 1)
-            return -1
-        # Prepare the query as if there is many source points
-        # .. even if there is not :
-        polygons = []
+        max_time = self.time_param['max']
+        inter_time = self.time_param['interval']
         points = [points] if isinstance(points[0], float) else points
         if len(points) > 1:
-            self.max_points = 2800
-        prog_val = 1
-
-        # Compute an isochrone for each source point :
+            self.max_points = 3900
+        self.progress.setValue(0.2)
+        nb_inter = (
+             (max_time // inter_time) + 1
+             if (max_time % inter_time) < inter_time/2.0
+             else (max_time // inter_time) + 2
+            )
+        levels = \
+            [i for i in xrange(0, max_time+inter_time, inter_time)][:nb_inter]
+        self.pool_errors = []
+        self.polygons = []
+        self.eventloop = QEventLoop()
+        self.pool = QThreadPool(self)
+        self.pool.setMaxThreadCount(12)
         for nb, point in enumerate(points):
-            bounds = get_search_frame(point, max_time)
-            coords_grid = make_regular_points(bounds, self.max_points)
-            prog_val += 0.1 * (nb / len(points))
-            self.progress.setValue(prog_val)
+            worker = WorkerIsochrone(
+                point, self.max_points, max_time, levels, self.host)
+            worker.signals.result.connect(self.process_result)
+            worker.signals.error.connect(lambda x: self.pool_errors.append(x))
+            self.pool.start(worker)
+        self.pool.waitForDone()
+        self.eventloop.processEvents()
+        self.eventloop.exit()
+        self.progress.setValue(0.7)
+        _ = levels.pop(0)
 
-            # Fetch the matrice (and snapped coords) to numpy.ndarray objects :
-            matrix, src_coords, snapped_dest_coords = rectangular_light_table(
-                point, coords_grid, conn, self.http_headers)
-            times = (matrix[0] / 600.0).round(2)  # Round values in minutes
-            prog_val += 4 * (nb / len(points))
-            self.progress.setValue(prog_val)
-            nb_inter = int(round(max_time / inter_time)) + 1
-            levels = [nb for nb in xrange(0, int(
-                round(np.nanmax(times)) + 1) + inter_time, inter_time)][:nb_inter]
-            del matrix
-            # Fetch MatPlotLib polygons from a griddata interpolation
-            collec_poly = interpolate_from_times(
-                times, [(i[1], i[0]) for i in snapped_dest_coords], levels)
-            prog_val += 7 * (nb / len(points))
-            self.progress.setValue(7)
-            _ = levels.pop(0)
-            # Convert MatPlotLib polygons to QgsGeometry polygons :
-            polygons.append(
-                qgsgeom_from_mpl_collec(collec_poly.collections))
-        conn.close()
+        if self.pool_errors:
+            if len(set(self.pool_errors)) == 1:
+                print("Erreur:\n{}".format(self.pool_errors[0]))
+            else:
+                print("Erreurs:\n{}".format(self.pool_errors))
+
         # Merge the polygons of each isochrone (category-wise) :
         if len(points) > 1:
-            tmp = len(polygons[0])
-            assert all([len(x) == tmp for x in polygons])
-            polygons = np.array(polygons).transpose().tolist()
-#            print(polygons)
-            merged_poly = [QgsGeometry.unaryUnion(polys) for polys in polygons]
+            self.progress.setValue(0.75)
+            st = t_time()
+            tmp = len(self.polygons[0])
+            try:  # It will fail if all isochrones haven't the same number of polygons
+                assert all([len(x) == tmp for x in self.polygons])
+            except AssertionError as err:
+                QgsMessageLog.logMessage(
+                    'OSRM-plugin error report :\n {}'.format(err),
+                    level=QgsMessageLog.WARNING)
+                QtGui.QMessageBox.information(
+                    self.iface.mainWindow(), 'Warning',
+                    "Something weird append when trying to merge isochrones")
+                print(self.polygons)
+                print([len(i) for i in self.polygons])
+                return
+            self.polygons = np.array(self.polygons).transpose().tolist()
+            merged_poly = [QgsGeometry.unaryUnion(polys) for polys in self.polygons]
+            print('merging polygons : {}'.format(str(round(t_time() - st, 2))+'s'))
             return merged_poly, levels
+
         else:
-            return polygons[0], levels
+            self.progress.setValue(0.9)
+            return self.polygons[0], levels
 
 
 class OSRM_batch_route_Dialog(QtGui.QDialog, FORM_CLASS_b, TemplateOsrm):
@@ -981,7 +1009,6 @@ class OSRM_batch_route_Dialog(QtGui.QDialog, FORM_CLASS_b, TemplateOsrm):
 
     def enable_functionnality(self, text):
         functions = (
-            
             self.ComboBoxOrigin.setEnabled, self.label_2.setEnabled,
             self.ComboBoxDestination.setEnabled, self.label.setEnabled,
             self.label_5.setEnabled, self.ComboBoxCsv.setEnabled,
@@ -1096,6 +1123,8 @@ class OSRM_batch_route_Dialog(QtGui.QDialog, FORM_CLASS_b, TemplateOsrm):
 
     @pyqtSlot()
     def get_batch_route(self):
+        #TODO: Deplacer le batch_route vers un Worker pour pas perdre le 
+        #  controle sur l'interface pendant le temps de calcul
         """Query the API and make a line for each route"""
         self.filename = self.lineEdit_output.text()
         if not self.check_add_layer.isChecked() \

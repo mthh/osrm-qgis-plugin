@@ -276,6 +276,7 @@ class OSRM(object):
         self.dlg.pushButton_about.clicked.connect(self.dlg.print_about)
         self.dlg.toolButton_poly.clicked.connect(self.polycentric)
         self.dlg.show()
+#        self.dlg.exec_()
 
     @pyqtSlot()
     def polycentric(self):

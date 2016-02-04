@@ -12,12 +12,13 @@ Contains two pieces of code for which i'm not the author :
 
 """
 import numpy as np
+from sys import version_info
 from itertools import islice
 from PyQt4.QtGui import QColor, QFileDialog, QDialog, QMessageBox
-from PyQt4.QtCore import QSettings, QFileInfo, Qt
+from PyQt4.QtCore import QSettings, QFileInfo, Qt, QObject, pyqtSignal, QRunnable, QThreadPool
 from qgis.core import (
     QgsGeometry, QgsPoint, QgsCoordinateReferenceSystem,
-    QgsCoordinateTransform, QgsSymbolV2, QgsMessageLog
+    QgsCoordinateTransform, QgsSymbolV2, QgsMessageLog, QGis
     )
 from qgis.gui import QgsEncodingFileDialog
 from matplotlib.pyplot import contourf
@@ -26,13 +27,60 @@ from httplib import HTTPConnection
 from .osrm_utils_extern import PolylineCodec, lru_cache
 import json
 
-__all__ = ['check_host', 'save_dialog', 'save_dialog_geo',
+__all__ = ['check_host', 'save_dialog', 'save_dialog_geo', 'WorkerIsochrone',
            'qgsgeom_from_mpl_collec', 'prepare_route_symbol',
            'interpolate_from_times', 'get_coords_ids', 'chunk_it',
-           'accumulated_time', 'pts_ref', 'TemplateOsrm',
+           'accumulated_time', 'pts_ref', 'TemplateOsrm', 'HTTP_HEADERS',
            'return_osrm_table_version', 'decode_geom', 'h_light_table',
            'rectangular_light_table', 'decode_geom_to_pts', 'h_locate',
            'make_regular_points', 'get_search_frame', 'get_isochrones_colors']
+
+HTTP_HEADERS = {
+    'connection': 'keep-alive',
+    'User-Agent': ' '.join(
+        ['QGIS-desktop', QGis.QGIS_VERSION, '/',
+         'Python-httplib', str(version_info[:3])[1:-1].replace(', ', '.')])
+    }
+
+
+class WorkerSignals(QObject):
+    result = pyqtSignal(list)
+    error = pyqtSignal(str)
+
+class WorkerIsochrone(QRunnable):
+    def __init__(self, point, max_points, max_time, levels, host):
+        super(WorkerIsochrone, self).__init__()
+        self.signals = WorkerSignals()
+        self.point = point
+        self.max_points = max_points
+        self.max_time = max_time
+        self.levels = levels
+        try:
+            self.conn = HTTPConnection(host)
+        except Exception as err:
+            self.signals.error.emit(err)
+            return -1
+
+    def run(self):
+        try:
+            bounds = get_search_frame(self.point, self.max_time)
+            coords_grid = make_regular_points(bounds, self.max_points)
+            # Fetch the matrix (and snapped coords) to numpy.ndarray objects :
+            matrix, src_coords, snapped_dest_coords = rectangular_light_table(
+                self.point, coords_grid, self.conn, HTTP_HEADERS)
+            times = (matrix[0] / 600.0).round(2)  # Round values in minutes
+            del matrix
+            # Fetch MatPlotLib polygons from a griddata interpolation
+            collec_poly = interpolate_from_times(
+                times, snapped_dest_coords, self.levels, rev_coords=True)
+            # Convert MatPlotLib polygons to QgsGeometry polygons :
+            res = \
+                qgsgeom_from_mpl_collec(collec_poly.collections)
+            self.conn.close()
+            self.signals.result.emit(res)
+        except Exception as err:
+            self.signals.error.emit(err)
+            return -1
 
 
 class TemplateOsrm(object):
@@ -53,6 +101,7 @@ class TemplateOsrm(object):
         QgsMessageLog.logMessage(
             'OSRM-plugin error report :\n {}'.format(error),
             level=QgsMessageLog.WARNING)
+        self.iface.messageBar().clearWidgets()
 
     @lru_cache(maxsize=25)
     def query_url(self, url, host):
@@ -180,37 +229,50 @@ def qgsgeom_from_mpl_collec(collections):
                     mpoly.append([exterior] + [h for h in holes])
                 else:
                     mpoly.append([exterior, holes])
-        if len(mpoly) > 1:
-            polygons.append(QgsGeometry.fromMultiPolygon(mpoly))
-        elif len(mpoly) == 1:
+
+        if len(mpoly) == 1:
             polygons.append(QgsGeometry.fromPolygon(mpoly[0]))
+        elif len(mpoly) > 1:
+            polygons.append(QgsGeometry.fromMultiPolygon(mpoly))
+        else:
+            polygons.append(QgsGeometry.fromPolygon([]))
     return polygons
 
 
-def interpolate_from_times(times, coords, levels):
-    x = np.array([coordx[0] for coordx in coords])
-    y = np.array([coordy[1] for coordy in coords])
+def interpolate_from_times(times, coords, levels, rev_coords=False):
+    if not rev_coords:
+        x = np.array([coordx[0] for coordx in coords])
+        y = np.array([coordy[1] for coordy in coords])
+    else:
+        x = coords[..., 1]
+        y = coords[..., 0]
     xi = np.linspace(np.nanmin(x), np.nanmax(x), 200)
     yi = np.linspace(np.nanmin(y), np.nanmax(y), 200)
     zi = griddata(x, y, times, xi, yi, interp='linear')
+    v_bnd = np.nanmax(abs(zi))
     collec_poly = contourf(
-        xi, yi, zi, levels, vmax=abs(zi).max(), vmin=-abs(zi).max())
+        xi, yi, zi, levels, vmax=v_bnd, vmin=-v_bnd)
     return collec_poly
 
 
-def get_coords_ids(layer, field):
+def get_coords_ids(layer, field, on_selected=False):
+    if on_selected:
+        get_features_method = layer.selectedFeatures
+    else:
+        get_features_method = layer.getFeatures
+
     if '4326' not in layer.crs().authid():
         xform = QgsCoordinateTransform(
             layer.crs(), QgsCoordinateReferenceSystem(4326))
         coords = [xform.transform(ft.geometry().asPoint())
-                  for ft in layer.getFeatures()]
+                  for ft in get_features_method()]
     else:
-        coords = [ft.geometry().asPoint() for ft in layer.getFeatures()]
+        coords = [ft.geometry().asPoint() for ft in get_features_method()]
 
     if field != '':
-        ids = [ft.attribute(field) for ft in layer.getFeatures()]
+        ids = [ft.attribute(field) for ft in get_features_method()]
     else:
-        ids = [ft.id() for ft in layer.getFeatures()]
+        ids = [ft.id() for ft in get_features_method()]
 
     return coords, ids
 

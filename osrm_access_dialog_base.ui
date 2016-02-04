@@ -160,8 +160,8 @@
        <string>&lt;!DOCTYPE HTML PUBLIC &quot;-//W3C//DTD HTML 4.0//EN&quot; &quot;http://www.w3.org/TR/REC-html40/strict.dtd&quot;&gt;
 &lt;html&gt;&lt;head&gt;&lt;meta name=&quot;qrichtext&quot; content=&quot;1&quot; /&gt;&lt;style type=&quot;text/css&quot;&gt;
 p, li { white-space: pre-wrap; }
-&lt;/style&gt;&lt;/head&gt;&lt;body style=&quot; font-family:'Ubuntu'; font-size:8pt; font-weight:400; font-style:normal;&quot;&gt;
-&lt;p style=&quot; margin-top:0px; margin-bottom:0px; margin-left:0px; margin-right:0px; -qt-block-indent:0; text-indent:0px;&quot;&gt;&lt;span style=&quot; font-family:'MS Shell Dlg 2'; font-style:italic;&quot;&gt;0 center(s) selected&lt;/span&gt;&lt;/p&gt;&lt;/body&gt;&lt;/html&gt;</string>
+&lt;/style&gt;&lt;/head&gt;&lt;body style=&quot; font-family:'MS Shell Dlg 2'; font-size:8pt; font-weight:400; font-style:normal;&quot;&gt;
+&lt;p style=&quot; margin-top:0px; margin-bottom:0px; margin-left:0px; margin-right:0px; -qt-block-indent:0; text-indent:0px;&quot;&gt;&lt;span style=&quot; font-style:italic;&quot;&gt;0 center(s) selected&lt;/span&gt;&lt;/p&gt;&lt;/body&gt;&lt;/html&gt;</string>
       </property>
       <property name="overwriteMode">
        <bool>true</bool>
@@ -393,15 +393,45 @@ p, li { white-space: pre-wrap; }
   <zorder>label_subtitle</zorder>
   <zorder>layoutWidget</zorder>
   <zorder>layoutWidget</zorder>
-  <zorder>lineEdit_host</zorder>
  </widget>
  <customwidgets>
+  <customwidget>
+   <class>QgsFieldComboBox</class>
+   <extends>QComboBox</extends>
+   <header>qgis.gui</header>
+  </customwidget>
+   <customwidget>
+   <class>QgsMapLayerProxyModel</class>
+   <extends>QComboBox</extends>
+   <header>qgis.gui</header>
+  </customwidget>
   <customwidget>
    <class>QgsMapLayerComboBox</class>
    <extends>QComboBox</extends>
    <header>qgis.gui</header>
   </customwidget>
+  <customwidget>
+   <class>QgsFieldProxyModel</class>
+   <extends>QComboBox</extends>
+   <header>qgis.gui</header>
+  </customwidget>
  </customwidgets>
+ <tabstops>
+  <tabstop>comboBox_method</tabstop>
+  <tabstop>comboBox_pointlayer</tabstop>
+  <tabstop>checkBox_selectedFt</tabstop>
+  <tabstop>pushButtonOrigin</tabstop>
+  <tabstop>lineEdit_xyO</tabstop>
+  <tabstop>toolButton_poly</tabstop>
+  <tabstop>textBrowser_nb_centers</tabstop>
+  <tabstop>lineEdit_host</tabstop>
+  <tabstop>spinBox_max</tabstop>
+  <tabstop>spinBox_intervall</tabstop>
+  <tabstop>pushButtonClear</tabstop>
+  <tabstop>pushButton_fetch</tabstop>
+  <tabstop>close_button_box</tabstop>
+  <tabstop>pushButton_about</tabstop>
+ </tabstops>
  <resources/>
  <connections>
   <connection>

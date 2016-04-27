@@ -1,4 +1,4 @@
-**OSRM plugin for QGIS**
+**OSRM plugin for QGIS - Currently in refactoring - Version on http://plugins.qgis.org/plugins/OSRM/ might not be up-to-date or might contain bugs**
 
 
 Overview

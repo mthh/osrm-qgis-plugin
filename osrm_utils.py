@@ -4,18 +4,11 @@ osrm_utils
 ----------
 Utilities function used for the plugin.
 
-----------
-
-Contains two pieces of code for which i'm not the author :
- - lru_cache functionnality, written by Raymond Hettinger (MIT licence, 2012)
- - PolylineCodec class, written by Bruno M. Custodio (MIT licence, 2014)
-
 """
 import numpy as np
-from sys import version_info
 from itertools import islice
 from PyQt4.QtGui import QColor, QFileDialog, QDialog, QMessageBox
-from PyQt4.QtCore import QSettings, QFileInfo, Qt, QObject, pyqtSignal, QRunnable, QThreadPool
+from PyQt4.QtCore import QSettings, QFileInfo, Qt  #, QObject, pyqtSignal, QRunnable, QThreadPool
 from qgis.core import (
     QgsGeometry, QgsPoint, QgsCoordinateReferenceSystem,
     QgsCoordinateTransform, QgsSymbolV2, QgsMessageLog, QGis
@@ -23,64 +16,21 @@ from qgis.core import (
 from qgis.gui import QgsEncodingFileDialog
 from matplotlib.pyplot import contourf
 from matplotlib.mlab import griddata
-from httplib import HTTPConnection
-from .osrm_utils_extern import PolylineCodec, lru_cache
+import urllib2
+from .osrm_utils_extern import PolylineCodec  #, lru_cache
 import json
 
-__all__ = ['check_host', 'save_dialog', 'save_dialog_geo', 'WorkerIsochrone',
+__all__ = ['check_host', 'save_dialog', 'save_dialog_geo',
            'qgsgeom_from_mpl_collec', 'prepare_route_symbol',
            'interpolate_from_times', 'get_coords_ids', 'chunk_it',
-           'accumulated_time', 'pts_ref', 'TemplateOsrm', 'HTTP_HEADERS',
-           'return_osrm_table_version', 'decode_geom', 'h_light_table',
-           'rectangular_light_table', 'decode_geom_to_pts', 'h_locate',
+           'pts_ref', 'TemplateOsrm',
+           'decode_geom', 'fetch_table', 'decode_geom_to_pts', 'fetch_nearest',
            'make_regular_points', 'get_search_frame', 'get_isochrones_colors']
 
-HTTP_HEADERS = {
-    'connection': 'keep-alive',
-    'User-Agent': ' '.join(
-        ['QGIS-desktop', QGis.QGIS_VERSION, '/',
-         'Python-httplib', str(version_info[:3])[1:-1].replace(', ', '.')])
-    }
-
-
-class WorkerSignals(QObject):
-    result = pyqtSignal(list)
-    error = pyqtSignal(str)
-
-class WorkerIsochrone(QRunnable):
-    def __init__(self, point, max_points, max_time, levels, host):
-        super(WorkerIsochrone, self).__init__()
-        self.signals = WorkerSignals()
-        self.point = point
-        self.max_points = max_points
-        self.max_time = max_time
-        self.levels = levels
-        try:
-            self.conn = HTTPConnection(host)
-        except Exception as err:
-            self.signals.error.emit(err)
-            return -1
-
-    def run(self):
-        try:
-            bounds = get_search_frame(self.point, self.max_time)
-            coords_grid = make_regular_points(bounds, self.max_points)
-            # Fetch the matrix (and snapped coords) to numpy.ndarray objects :
-            matrix, src_coords, snapped_dest_coords = rectangular_light_table(
-                self.point, coords_grid, self.conn, HTTP_HEADERS)
-            times = (matrix[0] / 600.0).round(2)  # Round values in minutes
-            del matrix
-            # Fetch MatPlotLib polygons from a griddata interpolation
-            collec_poly = interpolate_from_times(
-                times, snapped_dest_coords, self.levels, rev_coords=True)
-            # Convert MatPlotLib polygons to QgsGeometry polygons :
-            res = \
-                qgsgeom_from_mpl_collec(collec_poly.collections)
-            self.conn.close()
-            self.signals.result.emit(res)
-        except Exception as err:
-            self.signals.error.emit(err)
-            return -1
+def _chain(*lists):
+    for li in lists:
+        for elem in li:
+            yield elem
 
 
 class TemplateOsrm(object):
@@ -101,16 +51,12 @@ class TemplateOsrm(object):
         QgsMessageLog.logMessage(
             'OSRM-plugin error report :\n {}'.format(error),
             level=QgsMessageLog.WARNING)
-        self.iface.messageBar().clearWidgets()
 
-    @lru_cache(maxsize=25)
-    def query_url(self, url, host):
-        """
-        LRU cached function to make request to OSRM instance.
-        """
-        self.conn.request('GET', url, headers=self.http_headers)
-        parsed = json.loads(self.conn.getresponse().read().decode('utf-8'))
-        return parsed
+
+    @staticmethod
+    def query_url(url):
+        r = urllib2.urlopen(url)
+        return json.loads(r.read(), strict=False)
 
     def print_about(self):
         mbox = QMessageBox(self.iface.mainWindow())
@@ -146,7 +92,11 @@ class TemplateOsrm(object):
 
 
 def check_host(url):
-    """ Helper function to get the hostname in desired format """
+    """
+    Helper function to get the hostname in desired format
+    (i.e without "http://", with the port if needed
+        and without the last '/')
+    """
     if len(url) < 4:
         raise ValueError('Probably empty/non-valable url')
     if not ('http' in url and '//' in url) and url[-1] == '/':
@@ -217,18 +167,16 @@ def qgsgeom_from_mpl_collec(collections):
         for path in polygon.get_paths():
             path.should_simplify = False
             poly = path.to_polygons()
-            if len(poly) > 0 and len(poly[0]) > 4:
+            if len(poly) > 0 and len(poly[0]) > 3:
                 exterior = [QgsPoint(*p.tolist()) for p in poly[0]]
-                holes = [
-                    [QgsPoint(*p.tolist()) for p in h]
-                    for h in poly[1:] if len(h) > 4
-                    ]
+                holes = [[QgsPoint(*p.tolist()) for p in h]
+                         for h in poly[1:] if len(h) > 3]
                 if len(holes) == 1:
                     mpoly.append([exterior, holes[0]])
                 elif len(holes) > 1:
                     mpoly.append([exterior] + [h for h in holes])
                 else:
-                    mpoly.append([exterior, holes])
+                    mpoly.append([exterior])
 
         if len(mpoly) == 1:
             polygons.append(QgsGeometry.fromPolygon(mpoly[0]))
@@ -241,8 +189,8 @@ def qgsgeom_from_mpl_collec(collections):
 
 def interpolate_from_times(times, coords, levels, rev_coords=False):
     if not rev_coords:
-        x = np.array([coordx[0] for coordx in coords])
-        y = np.array([coordy[1] for coordy in coords])
+        x = coords[..., 0]
+        y = coords[..., 1]
     else:
         x = coords[..., 1]
         y = coords[..., 0]
@@ -282,30 +230,8 @@ def chunk_it(it, size):
     return list(iter(lambda: tuple(islice(it, size)), ()))
 
 
-def accumulated_time(features):
-    res = [0]
-    for feature in features:
-        res.append(feature[4] + res[len(res) - 1])
-    return res
-
-
 def pts_ref(features):
     return [i[3] for i in features]
-
-
-def return_osrm_table_version(host, coord, headers=None):
-    try:
-        conn = HTTPConnection(host)
-        url = '/locate?loc={}'.format(str(coord[1]) + ',' + str(coord[0]))
-        conn.request('GET', url, headers=headers)
-        parsed_json = json.loads(conn.getresponse().read().decode('utf-8'))
-        if parsed_json['status'] == 400:
-            return 'new'
-        else:
-            return 'old'
-    except Exception as err:
-        print(err)
-        return err
 
 
 def decode_geom(encoded_polyline):
@@ -319,130 +245,71 @@ def decode_geom(encoded_polyline):
         The encoded string to decode
     """
     return QgsGeometry.fromPolyline(
-        [QgsPoint(i[0], i[1]) for i
+        [QgsPoint(i[1], i[0]) for i
          in PolylineCodec().decode(encoded_polyline)])
 
 
-def h_light_table(list_coords, conn, headers=None):
+def fetch_table(url, coords_src, coords_dest):
     """
     Function wrapping OSRM 'table' function in order to get a matrix of
     time distance as a numpy array
 
     Params :
+        - url, str: the start of the url to use
+            (containing the host and the profile version/name)
 
-        list_coords: list
-            A list of coord as (x, y) , like :
-                 list_coords = [(21.3224, 45.2358),
-                                (21.3856, 42.0094),
-                                (20.9574, 41.5286)] (coords have to be float)
-        conn: httplib.HTTPConnection object
+        - coords_src, list: a python list of (x, y) coordinates to use
+            (they will be used a "sources" if destinations coordinates are
+             provided, otherwise they will be used as source and destination
+             in order to build a "square"/"symetrical" matrix)
 
-    Output:
-        - a numpy array containing the time in tenth of seconds
-            (where 2147483647 means not-found route)
-
-        -1 is return in case of any other error (bad 'output' parameter,
-            wrong list of coords/ids, unknow host,
-            wrong response from the host, etc.)
-    """
-    query = ['/table?loc=']
-    for coord in list_coords:  # Preparing the query
-        if coord:
-            tmp = ''.join([str(coord[1]), ',', str(coord[0]), '&loc='])
-            query.append(tmp)
-    query = (''.join(query))[:-5]
-
-    try:  # Querying the OSRM instance
-        conn.request('GET', query, headers=headers)
-        parsed_json = json.loads(conn.getresponse().read().decode('utf-8'))
-    except Exception as err:
-        raise ValueError('Error while contacting OSRM instance : \n{}'
-                                  .format(err))
-
-    if 'distance_table' in parsed_json.keys():  # Preparing the result matrix
-        mat = np.array(parsed_json['distance_table'], dtype='int32')
-        if len(mat) < len(list_coords):
-            print('The array returned by OSRM is smaller than the array '
-                  'requested\nOSRM parameter --max-table-size should be'
-                  ' increased')
-            raise ValueError(
-                  'The array returned by OSRM is smaller than the array '
-                  'requested\nOSRM parameter --max-table-size should be'
-                  ' increased')
-        else:
-            return mat
-    else:
-        raise ValueError('No distance table return by OSRM instance')
-
-
-def rectangular_light_table(src_coords, dest_coords, conn, headers=None):
-    """
-    Function wrapping new OSRM 'table' function in order to get a rectangular
-    matrix of time distance as a numpy array
-
-    Params :
-
-        src_coords: list
-            A list of coord as (x, y) , like :
-                 list_coords = [(21.3224, 45.2358),
-                                (21.3856, 42.0094),
-                                (20.9574, 41.5286)] (coords have to be float)
-        dest_coords: list
-            A list of coord as (x, y) , like :
-                 list_coords = [(21.3224, 45.2358),
-                                (21.3856, 42.0094),
-                                (20.9574, 41.5286)] (coords have to be float)
-        conn: httplib.HTTPConnection object
-        headers: dict
-            headers (as dict) to be transmited to the
-            httplib.HTTPConnection.request function.
+        - coords_dest, list or None: a python list of (x, y) coordinates to use
+            (if set to None, only the sources coordinates will be used in order
+            to build a "square"/"symetrical" matrix)
 
     Output:
         - a numpy array containing the time in tenth of seconds
             (where 2147483647 means not-found route)
-        - a numpy array of snapped source coordinates (lat, lng)
-        - a numpy array of snapped destination coordinates (lat, lng)
 
-        ValueError is raised in case of any error
-            (wrong list of coords/ids, unknow host,
-            wrong response from the host, etc.)
+        - a list of "snapped" source coordinates
+
+        - a list of "snapped" destination coordinates
+            (or None if no destination coordinates where provided)
     """
-    query = ['/table?src=']
-    # If only one source code (not nested) :
-    if len(src_coords) == 2 and not isinstance(src_coords[0], (list, tuple, QgsPoint)):
-        query.append(''.join(
-            [str(src_coords[1]), ',', str(src_coords[0]), '&dst=']))
-    else: # Otherwise :
-        for coord in src_coords:  # Preparing the query
-            if coord:
-                tmp = ''.join([str(coord[1]), ',', str(coord[0]), '&src='])
-                query.append(tmp)
-        query[-1] = query[-1][:-5] + '&dst='
-
-    if len(dest_coords) == 2 and not isinstance(dest_coords[0], (list, tuple, QgsPoint)):
-        tmp = ''.join([str(dest_coords[1]), ',', str(dest_coords[0]), '&dst='])
-        query.append(tmp)
+    if not coords_dest:
+        query = ''.join([url,
+                        ';'.join([','.join([str(coord[0]), str(coord[1])]) for coord in coords_src])])
     else:
-        for coord in dest_coords:  # Preparing the query
-            if coord:
-                tmp = ''.join([str(coord[1]), ',', str(coord[0]), '&dst='])
-                query.append(tmp)
+        src_end = len(coords_src)
+        dest_end = src_end + len(coords_dest)
+        query = ''.join([
+            url,
+            ';'.join([','.join([str(coord[0]), str(coord[1])]) for coord in _chain(coords_src, coords_dest)]),
+            '?sources=',
+            ';'.join([str(i) for i in range(src_end)]),
+            '&destinations=',
+            ';'.join([str(j) for j in range(src_end, dest_end)])
+            ])
 
-    query = (''.join(query))[:-5]
-    try:  # Querying the OSRM instance
-        conn.request('GET', query, headers=headers)
-        parsed_json = json.loads(conn.getresponse().read().decode('utf-8'))
+    try:
+        res = urllib2.urlopen(query)
+        parsed_json = json.loads(res.read(), strict=False)
+        assert parsed_json["code"] == "Ok"
+        assert "durations" in parsed_json
+
+    except AssertionError as er:
+        raise ValueError('Error while contacting OSRM instance : \n{}'
+                                  .format(er))
     except Exception as err:
         raise ValueError('Error while contacting OSRM instance : \n{}'
                                   .format(err))
 
-    if 'distance_table' in parsed_json.keys():  # Preparing the result matrix
-        mat = np.array(parsed_json['distance_table'], dtype='int32')
-        src_snapped = np.array(parsed_json['source_coordinates'], dtype='float64')
-        dest_snapped = np.array(parsed_json['destination_coordinates'], dtype='float64')
-        return mat, src_snapped, dest_snapped
-    else:
-        raise ValueError('No distance table return by OSRM instance')
+    durations = np.array(parsed_json["durations"], dtype=float)
+    new_src_coords = [ft["location"] for ft in parsed_json["sources"]]
+    new_dest_coords = None if not coords_dest \
+        else [ft["location"] for ft in parsed_json["destinations"]]
+
+    return durations, new_src_coords, new_dest_coords
 
 
 def decode_geom_to_pts(encoded_polyline):
@@ -452,10 +319,10 @@ def decode_geom_to_pts(encoded_polyline):
     encoded_polyline: str
         The encoded string to decode
     """
-    return [(i[0], i[1]) for i in PolylineCodec().decode(encoded_polyline)]
+    return [(i[1], i[0]) for i in PolylineCodec().decode(encoded_polyline)]
 
 
-def h_locate(coord, conn, headers=None):
+def fetch_nearest(host, profile, coord):
     """
     Useless function wrapping OSRM 'locate' function,
     returning the reponse in JSON.
@@ -466,23 +333,25 @@ def h_locate(coord, conn, headers=None):
     ----------
     coord: list/tuple of two floats
         (x ,y) where x is longitude and y is latitude
-    host: str, default 'http://localhost:5000'
+    host: str, like 'localhost:5000'
         Url and port of the OSRM instance (no final bakslash)
 
     Return
     ------
-       The JSON returned by the OSRM instance
+       The coordinates returned by OSRM (or False if any error is encountered)
     """
-    url = '/locate?loc={}'.format(str(coord[1]) + ',' + str(coord[0]))
+    url = ''.join(['http://', host, '/nearest/',
+                   profile, '/', str(coord[0]), ',', str(coord[1])])
     try:  # Querying the OSRM instance
-        conn.request('GET', url, headers=headers)
-        parsed_json = json.loads(conn.getresponse().read().decode('utf-8'))
-        if 'mapped_coordinate' in parsed_json:
-            return parsed_json
-        else:
-            return {'mapped_coordinate': (None,)}
+        rep = urllib2.urlopen(url)
+        parsed_json = json.loads(rep.read(), strict=False)
     except Exception as err:
-        return {'mapped_coordinate': (None,)}
+        print(err)
+        return False
+    if not 'code' in parsed_json or not "Ok" in parsed_json['code']:
+        return False
+    else:
+        return parsed_json["waypoints"][0]["location"]
 
 
 def make_regular_points(bounds, nb_pts):
@@ -494,16 +363,23 @@ def make_regular_points(bounds, nb_pts):
     nb_h = int(round(np.sqrt(nb_pts)))
     prog_x = [xmin + i * ((xmax - xmin) / nb_h) for i in range(nb_h + 1)]
     prog_y = [ymin + i * ((ymax - ymin) / nb_h) for i in range(nb_h + 1)]
-    res = []
+    result = []
     for x in prog_x:
         for y in prog_y:
-            res.append((x, y))
-    return res
-#    return [(x, y) for x in prog_x for y in prog_y]
+            result.append((x, y))
+    return result
 
 
 def get_search_frame(point, max_time):
-    search_len = (max_time * 2.25) * 1000
+    """
+    Define the search frame (ie. the bbox), given a center point and
+    the maximum time requested
+
+    Return
+    ------
+    xmin, ymin, xmax, ymax : float
+    """
+    search_len = (max_time * 4) * 1000
     crsSrc = QgsCoordinateReferenceSystem(4326)
     xform = QgsCoordinateTransform(crsSrc, QgsCoordinateReferenceSystem(3857))
     point = xform.transform(QgsPoint(*point))
@@ -520,7 +396,7 @@ def get_search_frame(point, max_time):
 
 def get_isochrones_colors(nb_features):
     """ Ugly "helper" function to rewrite to avoid repetitions """
-    return {1: ('#a6d96a'),
+    return {1: ('#a6d96a',),
             2: ('#fee08b', '#a6d96a'),
             3: ('#66bd63',
                 '#fee08b', '#f46d43'),

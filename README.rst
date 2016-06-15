@@ -1,4 +1,8 @@
-**OSRM plugin for QGIS - Currently in refactoring - Version on http://plugins.qgis.org/plugins/OSRM/ might not be up-to-date or might contain bugs**
+**OSRM plugin for QGIS**
+
+**Refactored to match new OSRM API (> v5.0)**
+
+**Version on http://plugins.qgis.org/plugins/OSRM/ might not be up-to-date or might contain bugs**
 
 
 Overview
@@ -7,9 +11,9 @@ Tiny `QGIS`_ plug-in allowing to retrieve and display data from an (ideally loca
 
 This plug-in is in its early stage of development and the code is hosted `on github`_.
 
-Current version : 0.0.1
+Current version : 0.0.1b
 
-Functionality 
+Functionality
 =============
 - Find a route
 - Get a time matrix
@@ -48,7 +52,7 @@ Fetch a time-distance matrix
 
 Compute accessibility isochrones
 --------------------------------
-**Compute monocentric or polycentric accessibility isochrones**: 
+**Compute monocentric or polycentric accessibility isochrones**:
 
 .. image:: help/source/img/multi_isochrone.jpg
    :scale: 10 %
@@ -84,13 +88,16 @@ If the information computed by this plugin is intend to be reused, you have to p
 
 Changelog
 =========
-Latest:
+0.0.1b:
+     - Add support for new OSRM API (> v5.0) and drop support for other versions
+
+0.0.1:
 	- Add support for the OSRM `/trip` functionality
 	- Add support for intermediate points in viaroute displaying.
 	- Add experimental support for "polycentric" (and more precise) accessibility isochrones.
 	- Add support for new OSRM rectangular matrix (and isochrones creation using it).
-0.0.1:
 	- First release
+
 0.0.1-rc1:
 	- Drop the use of shapely for isochrone polygons construction.
 	- ADD: a backport of functools.lru_cache to cache http request on client side.

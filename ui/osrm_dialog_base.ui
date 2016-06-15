@@ -7,7 +7,7 @@
     <x>0</x>
     <y>0</y>
     <width>453</width>
-    <height>455</height>
+    <height>461</height>
    </rect>
   </property>
   <property name="windowTitle">
@@ -47,7 +47,7 @@
    <property name="geometry">
     <rect>
      <x>20</x>
-     <y>50</y>
+     <y>40</y>
      <width>251</width>
      <height>17</height>
     </rect>
@@ -66,7 +66,7 @@
    <property name="geometry">
     <rect>
      <x>30</x>
-     <y>230</y>
+     <y>250</y>
      <width>388</width>
      <height>169</height>
     </rect>
@@ -74,6 +74,9 @@
    <layout class="QGridLayout" name="gridLayout">
     <item row="1" column="0">
      <widget class="QCheckBox" name="checkBox_instruction">
+      <property name="enabled">
+       <bool>false</bool>
+      </property>
       <property name="font">
        <font>
         <family>Arial</family>
@@ -102,6 +105,9 @@
     </item>
     <item row="2" column="0">
      <widget class="QCheckBox" name="checkBox_alternative">
+      <property name="enabled">
+       <bool>true</bool>
+      </property>
       <property name="font">
        <font>
         <family>Arial</family>
@@ -151,7 +157,7 @@
    <property name="geometry">
     <rect>
      <x>11</x>
-     <y>420</y>
+     <y>430</y>
      <width>85</width>
      <height>27</height>
     </rect>
@@ -164,7 +170,7 @@
    <property name="geometry">
     <rect>
      <x>260</x>
-     <y>420</y>
+     <y>430</y>
      <width>176</width>
      <height>27</height>
     </rect>
@@ -180,7 +186,7 @@
    <property name="geometry">
     <rect>
      <x>20</x>
-     <y>70</y>
+     <y>60</y>
      <width>120</width>
      <height>16</height>
     </rect>
@@ -199,7 +205,7 @@
    <property name="geometry">
     <rect>
      <x>161</x>
-     <y>70</y>
+     <y>60</y>
      <width>234</width>
      <height>16</height>
     </rect>
@@ -218,9 +224,9 @@
    <property name="geometry">
     <rect>
      <x>20</x>
-     <y>90</y>
+     <y>80</y>
      <width>411</width>
-     <height>128</height>
+     <height>161</height>
     </rect>
    </property>
    <layout class="QGridLayout" name="gridLayout_2">
@@ -325,6 +331,26 @@
        <font>
         <pointsize>8</pointsize>
        </font>
+      </property>
+     </widget>
+    </item>
+    <item row="4" column="2">
+     <widget class="QLineEdit" name="lineEdit_profileName">
+      <property name="text">
+       <string>v1/driving</string>
+      </property>
+     </widget>
+    </item>
+    <item row="4" column="0">
+     <widget class="QLabel" name="labem_profile">
+      <property name="font">
+       <font>
+        <family>Arial</family>
+        <pointsize>9</pointsize>
+       </font>
+      </property>
+      <property name="text">
+       <string>&lt;html&gt;&lt;head/&gt;&lt;body&gt;&lt;p align=&quot;center&quot;&gt;Profile name&lt;/p&gt;&lt;/body&gt;&lt;/html&gt;</string>
       </property>
      </widget>
     </item>

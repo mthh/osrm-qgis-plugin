@@ -11,7 +11,6 @@ from functools import update_wrapper
 from threading import RLock
 from collections import namedtuple
 
-
 ###############################################################################
 #
 #    Ligthweighted copy of the Polyline Codec for Python
@@ -19,7 +18,6 @@ from collections import namedtuple
 #    realeased under MIT licence, 2014, by Bruno M. Custodio :
 #
 ###############################################################################
-
 
 class PolylineCodec(object):
     """
@@ -44,8 +42,9 @@ class PolylineCodec(object):
             lng_change, index = self._trans(expression, index)
             lat += lat_change
             lng += lng_change
-            coordinates.append((lng / 1e6, lat / 1e6))
+            coordinates.append((lat / 1e5, lng / 1e5))
         return coordinates
+
 
 ###############################################################################
 #    Full featured backport from functools.lru_cache for python 2.7.

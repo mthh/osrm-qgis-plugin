@@ -23,11 +23,13 @@
 
 import os
 import csv
+import sys
 import numpy as np
+#import json
 from PyQt4 import QtGui, uic
-from PyQt4.QtCore import pyqtSlot, Qt, QPointF, QThreadPool, QEventLoop
+from PyQt4.QtCore import Qt, QPointF  #, QThreadPool, QEventLoop
 from re import match
-from httplib import HTTPConnection
+#import urllib2
 from codecs import open as codecs_open
 from qgis.gui import QgsMapLayerProxyModel, QgsMapToolEmitPoint
 from qgis.core import (
@@ -39,23 +41,23 @@ from qgis.core import (
     QgsSingleSymbolRendererV2
     )
 from osrm_utils import *
-from osrm_utils_extern import lru_cache
-from time import sleep, time as t_time
+#from osrm_utils_extern import lru_cache
+#from time import time as t_time
 
 FORM_CLASS, _ = uic.loadUiType(os.path.join(
-    os.path.dirname(__file__), 'osrm_dialog_base.ui'))
+    os.path.dirname(__file__), 'ui/osrm_dialog_base.ui'))
 
 FORM_CLASS_t, _ = uic.loadUiType(os.path.join(
-    os.path.dirname(__file__), 'osrm_table_dialog_base.ui'))
+    os.path.dirname(__file__), 'ui/osrm_table_dialog_base.ui'))
 
 FORM_CLASS_a, _ = uic.loadUiType(os.path.join(
-    os.path.dirname(__file__), 'osrm_access_dialog_base.ui'))
+    os.path.dirname(__file__), 'ui/osrm_access_dialog_base.ui'))
 
 FORM_CLASS_b, _ = uic.loadUiType(os.path.join(
-    os.path.dirname(__file__), 'osrm_batch_route.ui'))
+    os.path.dirname(__file__), 'ui/osrm_batch_route.ui'))
 
 FORM_CLASS_tsp, _ = uic.loadUiType(os.path.join(
-    os.path.dirname(__file__), 'osrm_dialog_tsp.ui'))
+    os.path.dirname(__file__), 'ui/osrm_dialog_tsp.ui'))
 
 
 class OSRM_DialogTSP(QtGui.QDialog, FORM_CLASS_tsp, TemplateOsrm):
@@ -64,7 +66,6 @@ class OSRM_DialogTSP(QtGui.QDialog, FORM_CLASS_tsp, TemplateOsrm):
         super(OSRM_DialogTSP, self).__init__(parent)
         self.setupUi(self)
         self.iface = iface
-        self.http_headers = HTTP_HEADERS
         self.pushButton_display.clicked.connect(self.run_tsp)
         self.pushButton_clear.clicked.connect(self.clear_results)
         self.comboBox_layer.setFilters(QgsMapLayerProxyModel.PointLayer)
@@ -85,26 +86,28 @@ class OSRM_DialogTSP(QtGui.QDialog, FORM_CLASS_tsp, TemplateOsrm):
         the canvas.
         """
         layer = self.comboBox_layer.currentLayer()
-        if self.checkBox_selec_features.isChecked():
-            pass
-        coords, _ = get_coords_ids(layer, '')
+        coords, _ = get_coords_ids(
+            layer, '', on_selected=self.checkBox_selec_features.isChecked())
 
         if len(coords) < 2:
             return -1
 
         try:
             self.host = check_host(self.lineEdit_host.text())
-        except ValueError:
+            profile = self.lineEdit_profileName.text()
+            assert len(profile) > 2
+        except (ValueError, AssertionError) as err:
+            print(err)
             self.iface.messageBar().pushMessage(
-                "Error", "Please provide a valid non-empty URL", duration=10)
+                "Error", "Please provide a valid non-empty URL and profile name", duration=10)
 
         query = ''.join(
-            ['/trip?loc={},{}&loc='.format(coords[0][1], coords[0][0]),
-             '&loc='.join(['{},{}'.format(i[1], i[0]) for i in coords[1:]])])
+            ["http://", self.host,
+            "/trip/", profile, "/",
+            ";".join(["{},{}".format(coord[0], coord[1]) for coord in coords])])
+
         try:
-            self.conn = HTTPConnection(self.host)
-            self.parsed = self.query_url(query, self.host)
-            self.conn.close()
+            self.parsed = self.query_url(query)
         except Exception as err:
             self.iface.messageBar().pushMessage(
                 "Error", "An error occured when trying to contact the OSRM "
@@ -117,7 +120,7 @@ class OSRM_DialogTSP(QtGui.QDialog, FORM_CLASS_tsp, TemplateOsrm):
 
         try:
             line_geoms = \
-                [decode_geom(self.parsed['trips'][i]['route_geometry'])
+                [decode_geom(self.parsed['trips'][i]['geometry'])
                  for i in range(len(self.parsed['trips']))]
         except KeyError:
             self.iface.messageBar().pushMessage(
@@ -137,8 +140,8 @@ class OSRM_DialogTSP(QtGui.QDialog, FORM_CLASS_tsp, TemplateOsrm):
             ft = QgsFeature()
             ft.setGeometry(line_geoms[idx])
             ft.setAttributes([idx,
-                              feature['route_summary']['total_distance'],
-                              feature['route_summary']['total_time']])
+                              feature['distance'],
+                              feature['duration']])
             features.append(ft)
             self.prepare_ordered_marker(coords, idx)
         tsp_route_layer.dataProvider().addFeatures(features)
@@ -163,8 +166,7 @@ class OSRM_DialogTSP(QtGui.QDialog, FORM_CLASS_tsp, TemplateOsrm):
 
         self.nb_route += 1
 
-        if self.checkBox_instructions.isChecked():
-            pass
+#        if self.checkBox_instructions.isChecked():
 #            pr_instruct, instruct_layer = self.prep_instruction()
 #            QgsMapLayerRegistry.instance().addMapLayer(instruct_layer)
 #            self.iface.setActiveLayer(instruct_layer)
@@ -181,7 +183,8 @@ class OSRM_DialogTSP(QtGui.QDialog, FORM_CLASS_tsp, TemplateOsrm):
         symbol = QgsSymbolV2.defaultSymbol(self.tsp_marker_lr.geometryType())
 
         ordered_pts = \
-            [coords[i] for i in self.parsed['trips'][idx]['permutation']]
+            [coords[i["waypoint_index"]] for i in self.parsed['waypoints']]
+        print("ordered_pts : ", ordered_pts)
         marker_rules = []
         features = []
         for nb, pt in enumerate(ordered_pts):
@@ -194,6 +197,7 @@ class OSRM_DialogTSP(QtGui.QDialog, FORM_CLASS_tsp, TemplateOsrm):
 
         renderer = QgsRuleBasedRendererV2(symbol)
         root_rule = renderer.rootRule()
+        #TODO: Pas utiliser QgsFontMarker mais labeller la couche
         for label, expression in marker_rules:
             rule = root_rule.children()[0].clone()
             rule.setLabel(str(label))
@@ -203,6 +207,7 @@ class OSRM_DialogTSP(QtGui.QDialog, FORM_CLASS_tsp, TemplateOsrm):
             s = QgsFontMarkerSymbolLayerV2()
             s.setSize(4)
             s.setOffset(QPointF(0.25, -0.45))
+            print('{}'.format(label))
             s.setCharacter('{}'.format(label))
             rule.symbol().appendSymbolLayer(s)
             root_rule.appendChild(rule)
@@ -224,7 +229,6 @@ class OSRMDialog(QtGui.QDialog, FORM_CLASS, TemplateOsrm):
         self.destinationEmit = QgsMapToolEmitPoint(self.canvas)
         self.nb_route = 0
         self.intermediate = []
-        self.http_headers = HTTP_HEADERS
         self.pushButtonTryIt.clicked.connect(self.get_route)
         self.pushButtonReverse.clicked.connect(self.reverse_OD)
         self.pushButtonClear.clicked.connect(self.clear_all_single)
@@ -253,14 +257,14 @@ class OSRMDialog(QtGui.QDialog, FORM_CLASS, TemplateOsrm):
         """
         Fetch the geometry of alternatives roads if requested
         """
-        for i, alt_geom in enumerate(self.parsed['alternative_geometries']):
-            decoded_alt_line = decode_geom(alt_geom)
+        for i, alt_geom in enumerate(self.parsed['routes'][1:]):
+            decoded_alt_line = decode_geom(alt_geom["geometry"])
             fet = QgsFeature()
             fet.setGeometry(decoded_alt_line)
             fet.setAttributes([
                 i + 1,
-                self.parsed['alternative_summaries'][i]['total_time'],
-                self.parsed['alternative_summaries'][i]['total_distance']
+                alt_geom["duration"],
+                alt_geom["distance"]
                 ])
             provider.addFeatures([fet])
 
@@ -327,7 +331,7 @@ class OSRMDialog(QtGui.QDialog, FORM_CLASS, TemplateOsrm):
     @staticmethod
     def make_OD_markers(nb, xo, yo, xd, yd, list_coords=None):
         """
-        Prepare the Origin (green), Destination (red) and Intermediates (grey)
+        Prepare the Origin (green), Destination (red) and Intalternative_geometriesermediates (grey)
         markers.
         """
         OD_layer = QgsVectorLayer(
@@ -373,7 +377,6 @@ class OSRMDialog(QtGui.QDialog, FORM_CLASS, TemplateOsrm):
         OD_layer.setRendererV2(renderer)
         return OD_layer
 
-    @pyqtSlot()
     def get_route(self):
         """
         Main method to prepare the request and display the result on the
@@ -388,6 +391,7 @@ class OSRMDialog(QtGui.QDialog, FORM_CLASS, TemplateOsrm):
         origin = self.lineEdit_xyO.text()
         interm = self.lineEdit_xyI.text()
         destination = self.lineEdit_xyD.text()
+        profile = self.lineEdit_profileName.text()
 
         try:
             assert match('^[^a-zA-Z]+$', origin) \
@@ -406,38 +410,37 @@ class OSRMDialog(QtGui.QDialog, FORM_CLASS, TemplateOsrm):
                 assert match('^[^a-zA-Z]+$', interm) \
                     and 150 > len(interm) > 4
                 interm = eval(''.join(['[', interm, ']']))
-                tmp = ''.join(
-                    ['&loc={},{}'.format(yi, xi) for xi, yi in interm])
-                url = ''.join([
-                    "/viaroute?loc={},{}".format(yo, xo),
-                    tmp,
-                    "&loc={},{}".format(yd, xd),
-                    "&instructions={}&alt={}".format(
+                tmp = ';'.join(
+                    ['{},{}'.format(xi, yi) for xi, yi in interm])
+                url = ''.join(["http://", self.host, "/route/", profile, "/",
+                               "{},{};".format(xo, yo), tmp, ";{},{}".format(xd, yd),
+                               "?overview=full&steps={}&alternatives={}".format(
                         str(self.checkBox_instruction.isChecked()).lower(),
-                        str(self.checkBox_alternative.isChecked()).lower())
-                    ])
+                        str(self.checkBox_alternative.isChecked()).lower())])
             except:
                 self.iface.messageBar().pushMessage(
                     "Error", "Invalid intemediates coordinates", duration=10)
-
         else:
             url = ''.join([
-                "/viaroute?loc={},{}&loc={},{}".format(yo, xo, yd, xd),
-                "&instructions={}&alt={}".format(
-                    str(self.checkBox_instruction.isChecked()).lower(),
-                    str(self.checkBox_alternative.isChecked()).lower())
-                ])
+                "http://", self.host, "/route/", profile, "/",
+                "{},{};{},{}".format(xo, yo, xd, yd),
+                "?overview=full&steps={}&alternatives={}"
+                .format(str(self.checkBox_instruction.isChecked()).lower(),
+                       str(self.checkBox_alternative.isChecked()).lower())])
 
         try:
-            self.conn = HTTPConnection(self.host)
-            self.parsed = self.query_url(url, self.host)
-            self.conn.close()
+            self.parsed = self.query_url(url)
         except Exception as err:
             self.display_error(err, 1)
             return
 
+        if not 'Ok' in self.parsed['code']:
+            self.display_error(self.parsed['code'], 1)
+            return
+
         try:
-            line_geom = decode_geom(self.parsed['route_geometry'])
+            enc_line = self.parsed['routes'][0]["geometry"]
+            line_geom = decode_geom(enc_line)
         except KeyError:
             self.iface.messageBar().pushMessage(
                 "Error",
@@ -452,35 +455,34 @@ class OSRMDialog(QtGui.QDialog, FORM_CLASS, TemplateOsrm):
             "route_osrm{}".format(self.nb_route), "memory")
         my_symb = prepare_route_symbol(self.nb_route)
         osrm_route_layer.setRendererV2(QgsSingleSymbolRendererV2(my_symb))
-        QgsMapLayerRegistry.instance().addMapLayer(osrm_route_layer)
         provider = osrm_route_layer.dataProvider()
         fet = QgsFeature()
         fet.setGeometry(line_geom)
-        fet.setAttributes([0, self.parsed['route_summary']['total_time'],
-                           self.parsed['route_summary']['total_distance']])
+        fet.setAttributes([0, self.parsed['routes'][0]['duration'],
+                           self.parsed['routes'][0]['distance']])
         provider.addFeatures([fet])
-
         OD_layer = self.make_OD_markers(self.nb_route, xo, yo, xd, yd, interm)
         QgsMapLayerRegistry.instance().addMapLayer(OD_layer)
         self.iface.setActiveLayer(OD_layer)
         osrm_route_layer.updateExtents()
+        QgsMapLayerRegistry.instance().addMapLayer(osrm_route_layer)
         self.iface.setActiveLayer(osrm_route_layer)
         self.iface.zoomToActiveLayer()
 
-        if self.checkBox_instruction.isChecked():
-            pr_instruct, instruct_layer = self.prep_instruction()
-            QgsMapLayerRegistry.instance().addMapLayer(instruct_layer)
-            self.iface.setActiveLayer(instruct_layer)
+#        if self.checkBox_instruction.isChecked():
+#            pr_instruct, instruct_layer = self.prep_instruction()
+#            QgsMapLayerRegistry.instance().addMapLayer(instruct_layer)
+#            self.iface.setActiveLayer(instruct_layer)
 
         if self.checkBox_alternative.isChecked() \
                 and 'alternative_geometries' in self.parsed:
-            self.nb_alternative = len(self.parsed['alternative_geometries'])
+            self.nb_alternative = len(self.parsed['routes'] - 1)
             self.get_alternatives(provider)
-            if self.dlg.checkBox_instruction.isChecked():
-                for i in range(self.nb_alternative):
-                    pr_instruct, instruct_layer = \
-                       self.prep_instruction(
-                           i + 1, pr_instruct, instruct_layer)
+#            if self.dlg.checkBox_instruction.isChecked():
+#                for i in range(self.nb_alternative):
+#                    pr_instruct, instruct_layer = \
+#                       self.prep_instruction(
+#                           i + 1, pr_instruct, instruct_layer)
         return
 
 
@@ -490,6 +492,7 @@ class OSRM_table_Dialog(QtGui.QDialog, FORM_CLASS_t, TemplateOsrm):
         super(OSRM_table_Dialog, self).__init__(parent)
         self.setupUi(self)
         self.iface = iface
+        self.encoding = "System"
         self.pushButton_fetch.setDisabled(True)
         self.comboBox_layer.setFilters(QgsMapLayerProxyModel.PointLayer)
         self.comboBox_layer.layerChanged.connect(
@@ -505,7 +508,6 @@ class OSRM_table_Dialog(QtGui.QDialog, FORM_CLASS_t, TemplateOsrm):
             )
         self.pushButton_browse.clicked.connect(self.output_dialog)
         self.pushButton_fetch.clicked.connect(self.get_table)
-        self.http_headers = HTTP_HEADERS
 
     def output_dialog(self):
         self.lineEdit_output.clear()
@@ -514,84 +516,64 @@ class OSRM_table_Dialog(QtGui.QDialog, FORM_CLASS_t, TemplateOsrm):
             return
         self.lineEdit_output.setText(self.filename)
 
-    @pyqtSlot()
     def get_table(self):
         """
         Main method to prepare the query and fecth the table to a .csv file
         """
         try:
             self.host = check_host(self.lineEdit_host.text())
-        except ValueError:
+            profile = self.lineEdit_profileName.text()
+            print(profile)
+            assert len(profile) > 2
+        except:
             self.iface.messageBar().pushMessage(
-                "Error", "Please provide a valid non-empty URL", duration=10)
-        osrm_table_version = return_osrm_table_version(
-            self.host, (1.0, 1.0), self.http_headers)
-        self.filename = self.lineEdit_output.text()
-        s_layer = self.comboBox_layer.currentLayer()
-        d_layer = self.comboBox_layer_2.currentLayer()
-        if 'old' in osrm_table_version and d_layer and d_layer != s_layer:
-            QtGui.QMessageBox.information(
-                self.iface.mainWindow(), 'Error',
-                "Rectangular matrix aren't supported in your running version "
-                "of OSRM\nPlease only select a source point layer which will "
-                "be used to compute a square matrix\n(or update your OSRM "
-                "instance")
-            self.comboBox_layer_2.setCurrentIndex(-1)
-            return -1
+                "Error", "Please provide valid non-empty URL and profile name",
+                duration=10)
+            return
 
-        elif d_layer == s_layer:
-            d_layer = None
+        self.filename = self.lineEdit_output.text()
+
+        s_layer = self.comboBox_layer.currentLayer()
+        d_layer = self.comboBox_layer_2.currentLayer() \
+            if self.comboBox_layer_2.currentLayer() != s_layer else None
 
         coords_src, ids_src = \
             get_coords_ids(s_layer, self.comboBox_idfield.currentField())
 
-        if d_layer:
-            coords_dest, ids_dest = \
-                get_coords_ids(d_layer, self.comboBox_idfield_2.currentField())
-        try:
-            conn = HTTPConnection(self.host)
-            if d_layer:
-                table, new_src_coords, new_dest_coords = \
-                    rectangular_light_table(
-                        coords_src, coords_dest, conn, self.http_headers)
-            else:
-                table = h_light_table(
-                    coords_src, conn, headers=self.http_headers)
-                if len(table) < len(coords_src):
-                    self.iface.messageBar().pushMessage(
-                        'The array returned by OSRM is smaller to the size of '
-                        'the array requested\nOSRM parameter --max-table-size '
-                        'should be increased', duration=20)
-            conn.close()
+        coords_dest, ids_dest = \
+            get_coords_ids(d_layer, self.comboBox_idfield_2.currentField()) \
+            if d_layer else (None, None)
 
+        url = ''.join(["http://", self.host, '/table/', profile, '/'])
+
+        try:
+            table, new_src_coords, new_dest_coords = \
+                    fetch_table(url, coords_src, coords_dest)
         except ValueError as err:
+            print(err)
             self.display_error(err, 1)
             return
         except Exception as er:
+            print(er)
             self.display_error(er, 1)
             return
 
         # Convert the matrix in minutes if needed :
         if self.checkBox_minutes.isChecked():
-            table = np.array(table, dtype='float64')
-            table = (table / 600.0).round(1)
+            table = (table / 60.0).round(2)
 
-        # Replace the value for not found connections :
-#        # With a "Not found" message, nicer output but higher memory usage :
-#        if self.dlg.checkBox_empty_val.isChecked():
-#            table = table.astype(str)
-#            if self.dlg.checkBox_minutes.isChecked():
-#                table[table == '3579139.4'] = 'Not found connection'
-#            else:
-#                table[table == '2147483647'] = 'Not found connection'
-        # Or without converting the array to string
-        # (choosed solution at this time)
+        # Replace the value corresponding to a not-found connection :
         if self.checkBox_empty_val.isChecked():
             if self.checkBox_minutes.isChecked():
                 table[table == 3579139.4] = np.NaN
             else:
                 table[table == 2147483647] = np.NaN
 
+        # Fetch the default encoding if selected :
+        if self.encoding == "System":
+            self.encoding = sys.getdefaultencoding()
+
+        # Write the result in csv :
         try:
             out_file = codecs_open(self.filename, 'w', encoding=self.encoding)
             writer = csv.writer(out_file, lineterminator='\n')
@@ -622,6 +604,7 @@ class OSRM_table_Dialog(QtGui.QDialog, FORM_CLASS_t, TemplateOsrm):
                 self.iface.mainWindow(), 'Done',
                 "OSRM table saved in {}".format(self.filename))
         except Exception as err:
+            print(err)
             QtGui.QMessageBox.information(
                 self.iface.mainWindow(), 'Error',
                 "Something went wrong...")
@@ -647,8 +630,6 @@ class OSRM_access_Dialog(QtGui.QDialog, FORM_CLASS_a, TemplateOsrm):
         self.nb_isocr = 0
         self.host = None
         self.progress = None
-        self.max_points = 5420
-        self.http_headers = HTTP_HEADERS
 
     def change_nb_center(self):
         nb_center = self.lineEdit_xyO.text().count('(')
@@ -715,13 +696,25 @@ class OSRM_access_Dialog(QtGui.QDialog, FORM_CLASS_a, TemplateOsrm):
         try:
             assert match('^[^a-zA-Z]+$', pts) and len(pts) > 4
             pts = eval(pts)
+            if len(pts) < 2:
+                raise ValueError
+            elif len(pts) == 2 and not isinstance(pts[0], tuple):
+                assert isinstance(pts[0], (int, float))
+                assert isinstance(pts[1], (int, float))
+                pts = [pts]
+            else:
+                assert all([isinstance(pt, tuple) for pt in pts])
+                assert all([isinstance(coord[0], (float, int))
+                            & isinstance(coord[1], (float, int))
+                            for coord in pts])
             return pts
-        except:
-            self.iface.messageBar().pushMessage(
-                "Error", "Invalid coordinates!", duration=10)
-            return -1
+        except Exception as err:
+            print(err)
+            QtGui.QMessageBox.warning(
+                self.iface.mainWindow(), 'Error',
+                "Invalid coordinates selected!")
+            return None
 
-    @pyqtSlot()
     def get_access_isochrones(self):
         """
         Making the accessibility isochrones in few steps:
@@ -733,71 +726,41 @@ class OSRM_access_Dialog(QtGui.QDialog, FORM_CLASS_a, TemplateOsrm):
             desired time intervals (using matplotlib library),
         - render the polygon.
         """
-        elapsed_time = {}
-        st = t_time()
         try:
             self.host = check_host(self.lineEdit_host.text())
+            self.profile = self.lineEdit_profileName.text()
+            assert len(self.profile) > 2
         except ValueError:
             self.iface.messageBar().pushMessage(
                 "Error", "Please provide a valid non-empty URL", duration=10)
 
         if 'clicking' in self.comboBox_method.currentText():
             pts = self.get_points_from_canvas()
-            #Todo: prévoir le cas ou fetch est cliqué avant qu'une coordonnées soit saisie
         elif 'selecting' in self.comboBox_method.currentText():
             layer = self.comboBox_pointlayer.currentLayer()
             pts, _ = get_coords_ids(
                 layer, '', on_selected=self.checkBox_selectedFt.isChecked())
             pts = tuple(pts)
-        # Time params as passed as self arguments to allow lru_cache decorator
-        # to do his job when querying an isochrone for the same location 
-        # but with a different time interval
+
+        if not pts:
+            return
+
         self.time_param = {'max': self.spinBox_max.value(),
                            'interval': self.spinBox_intervall.value()}
-#        max_time = self.spinBox_max.value()
-#        inter_time = self.spinBox_intervall.value()
         self.make_prog_bar()
-        # Fetch the version of the running OSRM instance by making a "/locate?"
-        # request (if it fails its OSRM > 4.9.0 and allow us to make
-        # rectangular "table")
-        version = \
-            return_osrm_table_version(self.host, (1.0, 2.2), self.http_headers)
+        self.max_points = 5500 if len(pts) == 1 else 2750
+        self.polygons = []
 
-        # Dispatch between two method, the first for the old API and the
-        # second for the new API (and allowing user to make isocrones from
-        # multiple origins) :
-        if 'old' in version:
-            if len(pts) > 2 or not isinstance(pts[0], float):
-                QtGui.QMessageBox.information(
-                    self.iface.mainWindow(), 'Error',
-                    "Polycentric isochrones are only allowed with newer OSRM"
-                    " version (>4.9.0)")
-                pts = pts[0]
-                self.lineEdit_xyO.setText(str(pts))
-                return
-            else:
-                elapsed_time['starting'] = str(round(t_time() - st, 2))+'s'
-                st = t_time()
-                polygons, levels = self.prep_accessibility_old_osrm(
-                    pts, self.host)
-                elapsed_time['query'] =  str(round(t_time() - st, 2))+'s'
-        elif 'new' in version:
-            elapsed_time['starting'] = str(round(t_time() - st, 2))+'s'
-            st = t_time()
-            polygons, levels = self.prep_accessibility_new_osrm(
-                pts, self.host)
-            elapsed_time['query'] =  str(round(t_time() - st, 2))+'s'
+        for pt in pts:
+            polyg, levels = self.prep_accessibility_osrm(pt)
+            self.polygons.append(polyg)
+
+        if len(self.polygons) == 1:
+            self.polygons = self.polygons[0]
         else:
-            QgsMessageLog.logMessage(
-                'OSRM-plugin error report :\n {}'.format(version),
-                level=QgsMessageLog.WARNING)
-            QtGui.QMessageBox.information(
-                self.iface.mainWindow(), 'Error',
-                "An error occured when trying to contact osrm instance at {}\n"
-                "See QGis log for error traceback".format(self.host))
-            self.iface.messageBar().clearWidgets()
-            return -1
-        st = t_time()
+            self.polygons = np.array(self.polygons).transpose().tolist()
+            self.polygons = [QgsGeometry.unaryUnion(polys) for polys in self.polygons]
+
         isochrone_layer = QgsVectorLayer(
             "MultiPolygon?crs=epsg:4326&field=id:integer"
             "&field=min:integer(10)"
@@ -805,10 +768,10 @@ class OSRM_access_Dialog(QtGui.QDialog, FORM_CLASS_a, TemplateOsrm):
             "isochrone_osrm_{}".format(self.nb_isocr), "memory")
         data_provider = isochrone_layer.dataProvider()
         # Add the features to the layer to display :
-
         features = []
         self.progress.setValue(8.5)
-        for i, poly in enumerate(polygons):
+        for i, poly in enumerate(self.polygons):
+            if not poly: continue
             ft = QgsFeature()
             ft.setGeometry(poly)
             ft.setAttributes(
@@ -820,14 +783,12 @@ class OSRM_access_Dialog(QtGui.QDialog, FORM_CLASS_a, TemplateOsrm):
 
         # Render the value :
         renderer = self.prepare_renderer(
-            levels, self.time_param['interval'], len(polygons))
+            levels, self.time_param['interval'], len(self.polygons))
         isochrone_layer.setRendererV2(renderer)
         isochrone_layer.setLayerTransparency(25)
-        elapsed_time['rendering'] =  str(round(t_time() - st, 2))+'s'
         self.iface.messageBar().clearWidgets()
         QgsMapLayerRegistry.instance().addMapLayer(isochrone_layer)
         self.iface.setActiveLayer(isochrone_layer)
-        print('Debug timings : \n\n{}'.format(elapsed_time.items()))
 
     @staticmethod
     def prepare_renderer(levels, inter_time, lenpoly):
@@ -847,134 +808,38 @@ class OSRM_access_Dialog(QtGui.QDialog, FORM_CLASS_a, TemplateOsrm):
         expression = 'max'
         return QgsGraduatedSymbolRendererV2(expression, ranges)
 
-    @lru_cache(maxsize=20)
-    def prep_accessibility_old_osrm(self, point, url):
+    def prep_accessibility_osrm(self, point):
         """Make the regular grid of points, snap them and compute tables"""
+        self.progress.setValue(0.1)
         max_time = self.time_param['max']
         inter_time = self.time_param['interval']
-        try:
-            conn = HTTPConnection(self.host)
-        except Exception as err:
-            self.display_error(err, 1)
-            return -1
-        self.max_points = 1780  # Lower number of requested points with old API
+
+        url = ''.join(["http://", self.host, '/table/', self.profile, '/'])
         bounds = get_search_frame(point, max_time)
         coords_grid = make_regular_points(bounds, self.max_points)
-        self.progress.setValue(0.1)
-        # Snap each point of the created grid (as the old OSRM /table? function
-        # dont send the snapped coordinates) :
-        coords = list(set(
-            [tuple(h_locate(pt, conn, self.http_headers)
-                   ['mapped_coordinate'][::-1]) for pt in coords_grid]))
-        origin_pt = h_locate(
-            point, conn, self.http_headers)['mapped_coordinate'][::-1]
-
-        self.progress.setValue(0.2)
-
-        # Split the request into small chunk (to avoid fetching too many
-        # unecessary values in the squared matrix) :
         try:
-            times = np.ndarray([])
-            for nbi, chunk in enumerate(chunk_it(coords, 99)):
-                # Fetch the matrice to a numpy.ndarray object :
-                matrix = h_light_table(
-                    list(chunk) + [origin_pt], conn, self.http_headers)
-                times = np.append(times, (matrix[-1])[:len(chunk)])
-                self.progress.setValue((nbi + 1) / 2.0)
+            times, origin_pt, snapped_dest_coords = \
+                fetch_table(url, [point], coords_grid)
         except Exception as err:
+            print(err)
             self.display_error(err, 1)
-            conn.close()
             return
 
-        conn.close()
-        times = (times[1:] / 600.0).round(2)  # Round time values in minutes
         nb_inter = int(round(max_time / inter_time)) + 1
         levels = [nb for nb in xrange(0, int(
             round(np.nanmax(times)) + 1) + inter_time, inter_time)][:nb_inter]
-        del matrix
+        times = (times[0] / 60.0).round(2)  # Round values in minutes
 
         # Fetch MatPlotLib polygons from a griddata interpolation
-        collec_poly = interpolate_from_times(times, coords, levels)
-        self.progress.setValue(5.5)
-        _ = levels.pop(0)
+        collec_poly = interpolate_from_times(
+            times, np.array(snapped_dest_coords), levels)
 
         # Convert MatPlotLib polygons to QgsGeometry polygons :
         polygons = qgsgeom_from_mpl_collec(collec_poly.collections)
-        return polygons, levels
 
-    def process_result(self, task_res):
-        self.polygons.append(task_res)
-
-    @lru_cache(maxsize=20)
-    def prep_accessibility_new_osrm(self, points, url):
-        """
-        Make the regular grid of points and compute a table between them and
-        and the source point, using the new OSRM table function for
-        rectangular matrix
-        + experimental support for polycentric accessibility isochrones
-        (or multiple isochrones from multiple origine in one time...)
-        """
-        max_time = self.time_param['max']
-        inter_time = self.time_param['interval']
-        points = [points] if isinstance(points[0], float) else points
-        if len(points) > 1:
-            self.max_points = 3900
-        self.progress.setValue(0.2)
-        nb_inter = (
-             (max_time // inter_time) + 1
-             if (max_time % inter_time) < inter_time/2.0
-             else (max_time // inter_time) + 2
-            )
-        levels = \
-            [i for i in xrange(0, max_time+inter_time, inter_time)][:nb_inter]
-        self.pool_errors = []
-        self.polygons = []
-        self.eventloop = QEventLoop()
-        self.pool = QThreadPool(self)
-        self.pool.setMaxThreadCount(12)
-        for nb, point in enumerate(points):
-            worker = WorkerIsochrone(
-                point, self.max_points, max_time, levels, self.host)
-            worker.signals.result.connect(self.process_result)
-            worker.signals.error.connect(lambda x: self.pool_errors.append(x))
-            self.pool.start(worker)
-        self.pool.waitForDone()
-        self.eventloop.processEvents()
-        self.eventloop.exit()
-        self.progress.setValue(0.7)
         _ = levels.pop(0)
 
-        if self.pool_errors:
-            if len(set(self.pool_errors)) == 1:
-                print("Erreur:\n{}".format(self.pool_errors[0]))
-            else:
-                print("Erreurs:\n{}".format(self.pool_errors))
-
-        # Merge the polygons of each isochrone (category-wise) :
-        if len(points) > 1:
-            self.progress.setValue(0.75)
-            st = t_time()
-            tmp = len(self.polygons[0])
-            try:  # It will fail if all isochrones haven't the same number of polygons
-                assert all([len(x) == tmp for x in self.polygons])
-            except AssertionError as err:
-                QgsMessageLog.logMessage(
-                    'OSRM-plugin error report :\n {}'.format(err),
-                    level=QgsMessageLog.WARNING)
-                QtGui.QMessageBox.information(
-                    self.iface.mainWindow(), 'Warning',
-                    "Something weird append when trying to merge isochrones")
-                print(self.polygons)
-                print([len(i) for i in self.polygons])
-                return
-            self.polygons = np.array(self.polygons).transpose().tolist()
-            merged_poly = [QgsGeometry.unaryUnion(polys) for polys in self.polygons]
-            print('merging polygons : {}'.format(str(round(t_time() - st, 2))+'s'))
-            return merged_poly, levels
-
-        else:
-            self.progress.setValue(0.9)
-            return self.polygons[0], levels
+        return polygons, levels
 
 
 class OSRM_batch_route_Dialog(QtGui.QDialog, FORM_CLASS_b, TemplateOsrm):
@@ -983,7 +848,6 @@ class OSRM_batch_route_Dialog(QtGui.QDialog, FORM_CLASS_b, TemplateOsrm):
         super(OSRM_batch_route_Dialog, self).__init__(parent)
         self.setupUi(self)
         self.iface = iface
-        self.http_headers = HTTP_HEADERS
         self.ComboBoxOrigin.setFilters(QgsMapLayerProxyModel.PointLayer)
         self.ComboBoxDestination.setFilters(QgsMapLayerProxyModel.PointLayer)
         self.ComboBoxCsv.setFilters(QgsMapLayerProxyModel.NoGeometry)
@@ -1121,12 +985,12 @@ class OSRM_batch_route_Dialog(QtGui.QDialog, FORM_CLASS_b, TemplateOsrm):
                 'OSRM-plugin error report :\n {}'.format(err),
                 level=QgsMessageLog.WARNING)
 
-    @pyqtSlot()
     def get_batch_route(self):
-        #TODO: Deplacer le batch_route vers un Worker pour pas perdre le 
+        #TODO: Deplacer le batch_route vers un Worker pour pas perdre le
         #  controle sur l'interface pendant le temps de calcul
         """Query the API and make a line for each route"""
         self.filename = self.lineEdit_output.text()
+        profile = self.lineEdit_profileName.text()
         if not self.check_add_layer.isChecked() \
                 and '.shp' not in self.filename:
             QtGui.QMessageBox.information(
@@ -1155,23 +1019,26 @@ class OSRM_batch_route_Dialog(QtGui.QDialog, FORM_CLASS_b, TemplateOsrm):
                 self.iface.mainWindow(), 'Error',
                 "Please, don't make heavy requests on the public API")
             return -1
-        self.conn = HTTPConnection(self.host)
+
         features = []
         for yo, xo, yd, xd in queries:
             try:
-                url = (
-                    "/viaroute?loc={},{}&loc={},{}"
-                    "&instructions=false&alt=false").format(yo, xo, yd, xd)
-                parsed = self.query_url(url, self.host)
+                url = ''.join([
+                    "http://", self.host, "/route/", profile, "/",
+                    "{},{};{},{}".format(xo, yo, xd, yd),
+                    "?overview=full&steps=false&alternatives=false"])
+                print(url)
+                parsed = self.query_url(url)
             except Exception as err:
+                print(err)
                 self.display_error(err, 1)
                 errors += 1
                 consec_errors += 1
                 continue
-#            else:
             try:
-                line_geom = decode_geom(parsed['route_geometry'])
-            except KeyError:
+                line_geom = decode_geom(parsed['routes'][0]["geometry"])
+            except KeyError as err:
+                print(err)
                 self.iface.messageBar().pushMessage(
                     "Error",
                     "No route found between {} and {}"
@@ -1180,13 +1047,12 @@ class OSRM_batch_route_Dialog(QtGui.QDialog, FORM_CLASS_b, TemplateOsrm):
                 errors += 1
                 consec_errors += 1
                 continue
-#                else:
             fet = QgsFeature()
             fet.setGeometry(line_geom)
             fet.setAttributes([
                 self.nb_route,
-                parsed['route_summary']['total_time'],
-                parsed['route_summary']['total_distance']
+                parsed['routes'][0]['duration'],
+                parsed['routes'][0]['distance']
                 ])
             features.append(fet)
             consec_errors = 0
@@ -1197,7 +1063,6 @@ class OSRM_batch_route_Dialog(QtGui.QDialog, FORM_CLASS_b, TemplateOsrm):
                                    "contact the OSRM instance - Route calcula"
                                    "tion has been stopped ", 2)
                 break
-        self.conn.close()
         self.nb_done += 1
 
         if len(features) < 1:
@@ -1209,7 +1074,6 @@ class OSRM_batch_route_Dialog(QtGui.QDialog, FORM_CLASS_b, TemplateOsrm):
         else:
             self.return_batch_route(features)
 
-    @pyqtSlot()
     def return_batch_route(self, features):
         """Save and/or display the routes retrieved"""
         osrm_batch_route_layer = QgsVectorLayer(

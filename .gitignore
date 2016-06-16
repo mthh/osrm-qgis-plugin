@@ -52,6 +52,10 @@ coverage.xml
 
 # Sphinx documentation
 docs/_build/
+help/build/
 
 # PyBuilder
 target/
+
+# PyQt generated files 
+resources.py

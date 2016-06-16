@@ -13,7 +13,7 @@ qgisMinimumVersion=2.8
 description=Display your routing results from OSRM
 version=0.0.1b
 author=mthh
-email=matthieu.viry@ums-riate.org
+email=matthieu.viry@ums-riate.fr
 
 about= OSRM (Open Source Routing Machine) plugin for QGIS, allowing to query a local/distant OSRM server API in order to display route(s), draw accessibility isochrones and export time-distance matrix.
 

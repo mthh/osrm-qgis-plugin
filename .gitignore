@@ -59,3 +59,6 @@ target/
 
 # PyQt generated files 
 resources.py
+
+# Others
+todo.txt

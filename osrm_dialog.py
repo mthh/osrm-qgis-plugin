@@ -25,20 +25,19 @@ import os
 import csv
 import sys
 import numpy as np
-#import json
+
 from PyQt4 import QtGui, uic
-from PyQt4.QtCore import Qt, QPointF  #, QThreadPool, QEventLoop
+#from PyQt4.QtCore import Qt, QPointF, QThreadPool, QEventLoop
 from re import match
-#import urllib2
 from codecs import open as codecs_open
 from qgis.gui import QgsMapLayerProxyModel, QgsMapToolEmitPoint
 from qgis.core import (
     QgsMessageLog, QgsCoordinateTransform, QgsFeature,
-    QgsCoordinateReferenceSystem, QgsMapLayerRegistry, QgsProject,
-    QgsVectorLayer, QgsVectorFileWriter, QgsPoint, QgsFontMarkerSymbolLayerV2,
+    QgsCoordinateReferenceSystem, QgsMapLayerRegistry,
+    QgsVectorLayer, QgsVectorFileWriter, QgsPoint,
     QgsGeometry, QgsRuleBasedRendererV2, QgsSymbolV2,
     QgsGraduatedSymbolRendererV2, QgsRendererRangeV2, QgsFillSymbolV2,
-    QgsSingleSymbolRendererV2
+    QgsSingleSymbolRendererV2, QgsPalLayerSettings
     )
 from osrm_utils import *
 #from osrm_utils_extern import lru_cache
@@ -94,12 +93,12 @@ class OSRM_DialogTSP(QtGui.QDialog, FORM_CLASS_tsp, TemplateOsrm):
 
         try:
             self.host = check_host(self.lineEdit_host.text())
-            profile = self.lineEdit_profileName.text()
-            assert len(profile) > 2
+            profile = check_profile_name(self.lineEdit_profileName.text())
         except (ValueError, AssertionError) as err:
             print(err)
             self.iface.messageBar().pushMessage(
                 "Error", "Please provide a valid non-empty URL and profile name", duration=10)
+            return
 
         query = ''.join(
             ["http://", self.host,
@@ -149,27 +148,14 @@ class OSRM_DialogTSP(QtGui.QDialog, FORM_CLASS_tsp, TemplateOsrm):
         QgsMapLayerRegistry.instance().addMapLayer(tsp_route_layer)
         self.iface.setActiveLayer(tsp_route_layer)
         self.iface.zoomToActiveLayer()
-
-        root = QgsProject.instance().layerTreeRoot()
-
-        myblayer = root.findLayer(self.tsp_marker_lr.id())
-        myClone = myblayer.clone()
-        parent = myblayer.parent()
-        parent.insertChildNode(0, myClone)
-        parent.removeChildNode(myblayer)
-
-        myalayer = root.findLayer(tsp_route_layer.id())
-        myClone = myalayer.clone()
-        parent = myalayer.parent()
-        parent.insertChildNode(1, myClone)
-        parent.removeChildNode(myalayer)
-
+        put_on_top(self.tsp_marker_lr.id(), tsp_route_layer.id())
         self.nb_route += 1
 
 #        if self.checkBox_instructions.isChecked():
 #            pr_instruct, instruct_layer = self.prep_instruction()
 #            QgsMapLayerRegistry.instance().addMapLayer(instruct_layer)
 #            self.iface.setActiveLayer(instruct_layer)
+
 
     def prepare_ordered_marker(self, coords, idx):
         """
@@ -181,39 +167,30 @@ class OSRM_DialogTSP(QtGui.QDialog, FORM_CLASS_tsp, TemplateOsrm):
             "&field=TSP_nb:integer(20)&field=Origin_nb:integer(20)",
             "tsp_markers_osrm{}".format(self.nb_route), "memory")
         symbol = QgsSymbolV2.defaultSymbol(self.tsp_marker_lr.geometryType())
+        symbol.setSize(4.5)
+        symbol.setColor(QtGui.QColor("yellow"))
 
         ordered_pts = \
             [coords[i["waypoint_index"]] for i in self.parsed['waypoints']]
         print("ordered_pts : ", ordered_pts)
-        marker_rules = []
+
         features = []
         for nb, pt in enumerate(ordered_pts):
             ft = QgsFeature()
             ft.setGeometry(QgsGeometry.fromPoint(QgsPoint(pt)))
             ft.setAttributes([nb, nb + 1, coords.index(pt)])
             features.append(ft)
-            marker_rules.append([nb + 1, 'TSP_nb = {}'.format(nb + 1)])
         self.tsp_marker_lr.dataProvider().addFeatures(features)
 
-        renderer = QgsRuleBasedRendererV2(symbol)
-        root_rule = renderer.rootRule()
-        #TODO: Pas utiliser QgsFontMarker mais labeller la couche
-        for label, expression in marker_rules:
-            rule = root_rule.children()[0].clone()
-            rule.setLabel(str(label))
-            rule.setFilterExpression(expression)
-            rule.symbol().setColor(QtGui.QColor("yellow"))
-            rule.symbol().setSize(4.5)
-            s = QgsFontMarkerSymbolLayerV2()
-            s.setSize(4)
-            s.setOffset(QPointF(0.25, -0.45))
-            print('{}'.format(label))
-            s.setCharacter('{}'.format(label))
-            rule.symbol().appendSymbolLayer(s)
-            root_rule.appendChild(rule)
+        pal_lyr = QgsPalLayerSettings()
+        pal_lyr.readFromLayer(self.tsp_marker_lr)
+        pal_lyr.enabled = True
+        pal_lyr.fieldName = 'TSP_nb'
+        pal_lyr.placement= QgsPalLayerSettings.OverPoint
+        pal_lyr.setDataDefinedProperty(QgsPalLayerSettings.Size,True,True,'12','')
+        pal_lyr.writeToLayer(self.tsp_marker_lr)
 
-        root_rule.removeChildAt(0)
-        self.tsp_marker_lr.setRendererV2(renderer)
+        self.tsp_marker_lr.setRendererV2(QgsSingleSymbolRendererV2(symbol))
         QgsMapLayerRegistry.instance().addMapLayer(self.tsp_marker_lr)
 
 
@@ -384,14 +361,16 @@ class OSRMDialog(QtGui.QDialog, FORM_CLASS, TemplateOsrm):
         """
         try:
             self.host = check_host(self.lineEdit_host.text())
-        except ValueError:
+            profile = check_profile_name(self.lineEdit_profileName.text())
+        except (ValueError, AssertionError) as err:
+            print(err)
             self.iface.messageBar().pushMessage(
-                "Error", "Please provide a valid non-empty URL", duration=10)
+                "Error", "Please provide a valid non-empty URL and profile name", duration=10)
+            return
 
         origin = self.lineEdit_xyO.text()
         interm = self.lineEdit_xyI.text()
         destination = self.lineEdit_xyD.text()
-        profile = self.lineEdit_profileName.text()
 
         try:
             assert match('^[^a-zA-Z]+$', origin) \
@@ -430,6 +409,7 @@ class OSRMDialog(QtGui.QDialog, FORM_CLASS, TemplateOsrm):
 
         try:
             self.parsed = self.query_url(url)
+            assert "code" in self.parsed
         except Exception as err:
             self.display_error(err, 1)
             return
@@ -463,12 +443,12 @@ class OSRMDialog(QtGui.QDialog, FORM_CLASS, TemplateOsrm):
         provider.addFeatures([fet])
         OD_layer = self.make_OD_markers(self.nb_route, xo, yo, xd, yd, interm)
         QgsMapLayerRegistry.instance().addMapLayer(OD_layer)
-        self.iface.setActiveLayer(OD_layer)
+
         osrm_route_layer.updateExtents()
         QgsMapLayerRegistry.instance().addMapLayer(osrm_route_layer)
         self.iface.setActiveLayer(osrm_route_layer)
         self.iface.zoomToActiveLayer()
-
+        put_on_top(OD_layer.id(), osrm_route_layer.id())
 #        if self.checkBox_instruction.isChecked():
 #            pr_instruct, instruct_layer = self.prep_instruction()
 #            QgsMapLayerRegistry.instance().addMapLayer(instruct_layer)
@@ -522,9 +502,7 @@ class OSRM_table_Dialog(QtGui.QDialog, FORM_CLASS_t, TemplateOsrm):
         """
         try:
             self.host = check_host(self.lineEdit_host.text())
-            profile = self.lineEdit_profileName.text()
-            print(profile)
-            assert len(profile) > 2
+            profile = check_profile_name(self.lineEdit_profileName.text())
         except:
             self.iface.messageBar().pushMessage(
                 "Error", "Please provide valid non-empty URL and profile name",
@@ -607,7 +585,7 @@ class OSRM_table_Dialog(QtGui.QDialog, FORM_CLASS_t, TemplateOsrm):
             print(err)
             QtGui.QMessageBox.information(
                 self.iface.mainWindow(), 'Error',
-                "Something went wrong...")
+                "Something went wrong...(See Qgis log for traceback)")
             QgsMessageLog.logMessage(
                 'OSRM-plugin error report :\n {}'.format(err),
                 level=QgsMessageLog.WARNING)
@@ -671,16 +649,6 @@ class OSRM_access_Dialog(QtGui.QDialog, FORM_CLASS_a, TemplateOsrm):
             if 'isochrone_osrm' in layer:
                 QgsMapLayerRegistry.instance().removeMapLayer(layer)
 
-    def make_prog_bar(self):
-        progMessageBar = self.iface.messageBar().createMessage(
-            "Creation in progress...")
-        self.progress = QtGui.QProgressBar()
-        self.progress.setMaximum(10)
-        self.progress.setAlignment(Qt.AlignLeft | Qt.AlignVCenter)
-        progMessageBar.layout().addWidget(self.progress)
-        self.iface.messageBar().pushWidget(
-            progMessageBar, self.iface.messageBar().INFO)
-
     def store_intermediate_acces(self, point):
         if '4326' not in self.canvas.mapSettings().destinationCrs().authid():
             crsSrc = self.canvas.mapSettings().destinationCrs()
@@ -728,11 +696,11 @@ class OSRM_access_Dialog(QtGui.QDialog, FORM_CLASS_a, TemplateOsrm):
         """
         try:
             self.host = check_host(self.lineEdit_host.text())
-            self.profile = self.lineEdit_profileName.text()
-            assert len(self.profile) > 2
-        except ValueError:
+            self.profile = check_profile_name(self.lineEdit_profileName.text())
+        except (ValueError, AssertionError) as err:
             self.iface.messageBar().pushMessage(
                 "Error", "Please provide a valid non-empty URL", duration=10)
+            return
 
         if 'clicking' in self.comboBox_method.currentText():
             pts = self.get_points_from_canvas()
@@ -748,12 +716,17 @@ class OSRM_access_Dialog(QtGui.QDialog, FORM_CLASS_a, TemplateOsrm):
         self.time_param = {'max': self.spinBox_max.value(),
                            'interval': self.spinBox_intervall.value()}
         self.make_prog_bar()
+#        self.max_points = 550
         self.max_points = 5500 if len(pts) == 1 else 2750
         self.polygons = []
 
-        for pt in pts:
-            polyg, levels = self.prep_accessibility_osrm(pt)
-            self.polygons.append(polyg)
+        try:
+            for pt in pts:
+                polyg, levels = self.prep_accessibility_osrm(pt)
+                self.polygons.append(polyg)
+        except Exception as err:
+            self.display_error(err, 1)
+            return
 
         if len(self.polygons) == 1:
             self.polygons = self.polygons[0]
@@ -817,13 +790,13 @@ class OSRM_access_Dialog(QtGui.QDialog, FORM_CLASS_a, TemplateOsrm):
         url = ''.join(["http://", self.host, '/table/', self.profile, '/'])
         bounds = get_search_frame(point, max_time)
         coords_grid = make_regular_points(bounds, self.max_points)
-        try:
-            times, origin_pt, snapped_dest_coords = \
-                fetch_table(url, [point], coords_grid)
-        except Exception as err:
-            print(err)
-            self.display_error(err, 1)
-            return
+#        try:
+        times, origin_pt, snapped_dest_coords = \
+            fetch_table(url, [point], coords_grid)
+#        except Exception as err:
+#            print(err)
+#            self.display_error(err, 1)
+#            return
 
         nb_inter = int(round(max_time / inter_time)) + 1
         levels = [nb for nb in xrange(0, int(
@@ -990,7 +963,6 @@ class OSRM_batch_route_Dialog(QtGui.QDialog, FORM_CLASS_b, TemplateOsrm):
         #  controle sur l'interface pendant le temps de calcul
         """Query the API and make a line for each route"""
         self.filename = self.lineEdit_output.text()
-        profile = self.lineEdit_profileName.text()
         if not self.check_add_layer.isChecked() \
                 and '.shp' not in self.filename:
             QtGui.QMessageBox.information(
@@ -999,9 +971,12 @@ class OSRM_batch_route_Dialog(QtGui.QDialog, FORM_CLASS_b, TemplateOsrm):
             return -1
         try:
             self.host = check_host(self.lineEdit_host.text())
-        except ValueError:
+            profile = check_profile_name(self.lineEdit_profileName.text())
+        except (ValueError, AssertionError) as err:
             self.iface.messageBar().pushMessage(
                 "Error", "Please provide a valid non-empty URL", duration=10)
+            return
+
         self.nb_route, errors, consec_errors = 0, 0, 0
         queries = self._prepare_queries()
         try:
@@ -1020,6 +995,7 @@ class OSRM_batch_route_Dialog(QtGui.QDialog, FORM_CLASS_b, TemplateOsrm):
                 "Please, don't make heavy requests on the public API")
             return -1
 
+        self.make_prog_bar()
         features = []
         for yo, xo, yd, xd in queries:
             try:

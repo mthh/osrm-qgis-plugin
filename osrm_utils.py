@@ -7,23 +7,23 @@ Utilities function used for the plugin.
 """
 import numpy as np
 from itertools import islice
-from PyQt4.QtGui import QColor, QFileDialog, QDialog, QMessageBox
+from PyQt4.QtGui import QColor, QFileDialog, QDialog, QMessageBox, QProgressBar
 from PyQt4.QtCore import QSettings, QFileInfo, Qt  #, QObject, pyqtSignal, QRunnable, QThreadPool
 from qgis.core import (
-    QgsGeometry, QgsPoint, QgsCoordinateReferenceSystem,
-    QgsCoordinateTransform, QgsSymbolV2, QgsMessageLog, QGis
+    QgsGeometry, QgsPoint, QgsCoordinateReferenceSystem, QgsProject,
+    QgsCoordinateTransform, QgsSymbolV2, QgsMessageLog
     )
 from qgis.gui import QgsEncodingFileDialog
 from matplotlib.pyplot import contourf
 from matplotlib.mlab import griddata
 import urllib2
-from .osrm_utils_extern import PolylineCodec  #, lru_cache
+from .osrm_utils_extern import PolylineCodec, lru_cache
 import json
 
 __all__ = ['check_host', 'save_dialog', 'save_dialog_geo',
            'qgsgeom_from_mpl_collec', 'prepare_route_symbol',
            'interpolate_from_times', 'get_coords_ids', 'chunk_it',
-           'pts_ref', 'TemplateOsrm',
+           'pts_ref', 'TemplateOsrm', "put_on_top", "check_profile_name",
            'decode_geom', 'fetch_table', 'decode_geom_to_pts', 'fetch_nearest',
            'make_regular_points', 'get_search_frame', 'get_isochrones_colors']
 
@@ -45,6 +45,7 @@ class TemplateOsrm(object):
                "when trying to contact the OSRM instance at {} - "
                "Route calculation has been stopped".format(self.host),
             }
+        self.iface.messageBar().clearWidgets()
         self.iface.messageBar().pushMessage(
             "Error", msg[code] + "(see QGis log for error traceback)",
             duration=10)
@@ -52,8 +53,18 @@ class TemplateOsrm(object):
             'OSRM-plugin error report :\n {}'.format(error),
             level=QgsMessageLog.WARNING)
 
+    def make_prog_bar(self):
+        progMessageBar = self.iface.messageBar().createMessage(
+            "Creation in progress...")
+        self.progress = QProgressBar()
+        self.progress.setMaximum(10)
+        self.progress.setAlignment(Qt.AlignLeft | Qt.AlignVCenter)
+        progMessageBar.layout().addWidget(self.progress)
+        self.iface.messageBar().pushWidget(
+            progMessageBar, self.iface.messageBar().INFO)
 
     @staticmethod
+    @lru_cache(maxsize=30)
     def query_url(url):
         r = urllib2.urlopen(url)
         return json.loads(r.read(), strict=False)
@@ -90,7 +101,12 @@ class TemplateOsrm(object):
         self.canvas.unsetMapTool(self.originEmit)
         self.lineEdit_xyO.setText(str(point))
 
+def check_profile_name(profile_name):
+    assert len(profile_name) > 3
+    assert "/" in profile_name
+    return profile_name
 
+@lru_cache(maxsize=30)
 def check_host(url):
     """
     Helper function to get the hostname in desired format
@@ -233,6 +249,21 @@ def chunk_it(it, size):
 def pts_ref(features):
     return [i[3] for i in features]
 
+def put_on_top(id_new_layer_top, id_old_layer_top):
+    root = QgsProject.instance().layerTreeRoot()
+
+    myblayer = root.findLayer(id_new_layer_top)
+    myClone = myblayer.clone()
+    parent = myblayer.parent()
+    parent.insertChildNode(0, myClone)
+    parent.removeChildNode(myblayer)
+
+    myalayer = root.findLayer(id_old_layer_top)
+    myClone = myalayer.clone()
+    parent = myalayer.parent()
+    parent.insertChildNode(1, myClone)
+    parent.removeChildNode(myalayer)
+
 
 def decode_geom(encoded_polyline):
     """
@@ -247,7 +278,6 @@ def decode_geom(encoded_polyline):
     return QgsGeometry.fromPolyline(
         [QgsPoint(i[1], i[0]) for i
          in PolylineCodec().decode(encoded_polyline)])
-
 
 def fetch_table(url, coords_src, coords_dest):
     """
@@ -322,6 +352,7 @@ def decode_geom_to_pts(encoded_polyline):
     return [(i[1], i[0]) for i in PolylineCodec().decode(encoded_polyline)]
 
 
+@lru_cache(maxsize=25)
 def fetch_nearest(host, profile, coord):
     """
     Useless function wrapping OSRM 'locate' function,

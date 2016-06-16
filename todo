@@ -1,0 +1,7 @@
+# TODO
+
+- draw something like a grey dashed line between the clicked point on the map and the real starting point of the route
+- display some small (red?) points for each center selected in accessibility isochrone before they are computing
+- use threading to fetch the result of accessibility isochrones when there is multiple center
+- re-allow to fetch routing instructions
+- use a nicer coloramp for isochrones

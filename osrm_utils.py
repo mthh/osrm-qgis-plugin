@@ -20,17 +20,62 @@ import urllib2
 from .osrm_utils_extern import PolylineCodec, lru_cache
 import json
 
-__all__ = ['check_host', 'save_dialog', 'save_dialog_geo',
+__all__ = ['check_host', 'save_dialog', 'save_dialog_geo', 'prep_access',
            'qgsgeom_from_mpl_collec', 'prepare_route_symbol',
-           'interpolate_from_times', 'get_coords_ids', 'chunk_it',
-           'pts_ref', 'TemplateOsrm', "put_on_top", "check_profile_name",
-           'decode_geom', 'fetch_table', 'decode_geom_to_pts', 'fetch_nearest',
+           'encode_to_polyline', 'interpolate_from_times', 'get_coords_ids',
+           'chunk_it', 'pts_ref', 'TemplateOsrm', "put_on_top",
+           "check_profile_name", 'decode_geom', 'fetch_table',
+           'decode_geom_to_pts', 'fetch_nearest',
            'make_regular_points', 'get_search_frame', 'get_isochrones_colors']
 
 def _chain(*lists):
     for li in lists:
         for elem in li:
             yield elem
+
+
+def encode_to_polyline(pts):
+    output = []
+
+    def write_enc(coord):
+        coord = int(round(coord * 1e5))
+        coord <<= 1
+        coord = coord if coord >= 0 else ~coord
+        while coord >= 0x20:
+            output.append((0x20 | (coord & 0x1f)) + 63)
+            coord >>= 5
+        output.append(coord + 63)
+
+    write_enc(pts[0][0])
+    write_enc(pts[0][1])
+    for i, pt in enumerate(pts[1:]):
+        write_enc(pt[0] - pts[i][0])
+        write_enc(pt[1] - pts[i][1])
+    return ''.join([chr(i) for i in output])
+
+def prep_access(time_param):
+    """Make the regular grid of points, snap them and compute tables"""
+    point = time_param['point']
+    max_time = time_param['max']
+    levels = time_param["levels"]
+
+    url = ''.join(["http://", time_param["host"], '/table/', time_param["profile"], '/'])
+    bounds = get_search_frame(point, max_time)
+    coords_grid = make_regular_points(bounds, time_param["max_points"])
+
+    times, origin_pt, snapped_dest_coords = \
+        fetch_table(url, [point], coords_grid)
+
+    times = (times[0] / 60.0).round(2)  # Round values in minutes
+
+    # Fetch MatPlotLib polygons from a griddata interpolation
+    collec_poly = interpolate_from_times(
+        times, np.array(snapped_dest_coords), levels)
+
+    # Convert MatPlotLib polygons to QgsGeometry polygons :
+    polygons = qgsgeom_from_mpl_collec(collec_poly.collections)
+
+    return polygons
 
 
 class TemplateOsrm(object):
@@ -308,13 +353,19 @@ def fetch_table(url, coords_src, coords_dest):
     """
     if not coords_dest:
         query = ''.join([url,
-                        ';'.join([','.join([str(coord[0]), str(coord[1])]) for coord in coords_src])])
+                         "polyline(",
+                         encode_to_polyline([(c[1], c[0]) for c in coords_src]),
+                         ")"])
+#                        ';'.join([','.join([str(coord[0]), str(coord[1])]) for coord in coords_src])])
     else:
         src_end = len(coords_src)
         dest_end = src_end + len(coords_dest)
         query = ''.join([
             url,
-            ';'.join([','.join([str(coord[0]), str(coord[1])]) for coord in _chain(coords_src, coords_dest)]),
+            "polyline(",
+            encode_to_polyline([(c[1], c[0]) for c in _chain(coords_src, coords_dest)]),
+            ")",
+#            ';'.join([','.join([str(coord[0]), str(coord[1])]) for coord in _chain(coords_src, coords_dest)]),
             '?sources=',
             ';'.join([str(i) for i in range(src_end)]),
             '&destinations=',

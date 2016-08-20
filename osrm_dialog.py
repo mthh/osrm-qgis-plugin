@@ -30,6 +30,7 @@ from PyQt4 import QtGui, uic
 #from PyQt4.QtCore import Qt, QPointF, QThreadPool, QEventLoop
 from re import match
 from codecs import open as codecs_open
+from multiprocessing.pool import ThreadPool
 from qgis.gui import QgsMapLayerProxyModel, QgsMapToolEmitPoint
 from qgis.core import (
     QgsMessageLog, QgsCoordinateTransform, QgsFeature,
@@ -402,7 +403,8 @@ class OSRMDialog(QtGui.QDialog, FORM_CLASS, TemplateOsrm):
         else:
             url = ''.join([
                 "http://", self.host, "/route/", profile, "/",
-                "{},{};{},{}".format(xo, yo, xd, yd),
+                "polyline(", encode_to_polyline([(yo, xo), (yd, xd)]), ")",
+#                "{},{};{},{}".format(xo, yo, xd, yd),
                 "?overview=full&steps={}&alternatives={}"
                 .format(str(self.checkBox_instruction.isChecked()).lower(),
                        str(self.checkBox_alternative.isChecked()).lower())])
@@ -683,6 +685,24 @@ class OSRM_access_Dialog(QtGui.QDialog, FORM_CLASS_a, TemplateOsrm):
                 "Invalid coordinates selected!")
             return None
 
+    def add_final_pts(self, pts):
+        center_pt_layer = QgsVectorLayer(
+            "Point?crs=epsg:4326&field=id_center:integer&field=role:string(80)",
+            "center_{}".format(self.nb_isocr), "memory")
+        my_symb = QgsSymbolV2.defaultSymbol(0)
+        my_symb.setColor(QtGui.QColor("#e31a1c"))
+        my_symb.setSize(1.2)
+        center_pt_layer.setRendererV2(QgsSingleSymbolRendererV2(my_symb))
+        features = []
+        for pt in pts:
+            xo, yo = pt["point"]
+            fet = QgsFeature()
+            fet.setGeometry(QgsGeometry.fromPoint(QgsPoint(float(xo), float(yo))))
+            fet.setAttributes([nb, 'Origin'])
+            features.append(fet)
+        center_pt_layer.dataProvider().addFeatures(features)
+        QgsMapLayerRegistry.instance().addMapLayer(center_pt_layer)
+
     def get_access_isochrones(self):
         """
         Making the accessibility isochrones in few steps:
@@ -713,17 +733,24 @@ class OSRM_access_Dialog(QtGui.QDialog, FORM_CLASS_a, TemplateOsrm):
         if not pts:
             return
 
-        self.time_param = {'max': self.spinBox_max.value(),
-                           'interval': self.spinBox_intervall.value()}
+        max_time = self.spinBox_max.value()
+        interval_time = self.spinBox_intervall.value()
+        nb_inter = int(round(max_time / interval_time)) + 1
+        levels = tuple([nb for nb in xrange(0, int(
+            max_time + 1) + interval_time, interval_time)][:nb_inter])
+
         self.make_prog_bar()
-#        self.max_points = 550
-        self.max_points = 5500 if len(pts) == 1 else 2750
+        self.max_points = 750 if len(pts) == 1 else 250
         self.polygons = []
 
+        pts = [{"point": pt, "max": max_time, "levels": levels,
+                "host": self.host, "profile": self.profile, "max_points": self.max_points}
+                for pt in pts]
+
+        pool = ThreadPool(processes=4 if len(pts) >= 4 else len(pts))
+
         try:
-            for pt in pts:
-                polyg, levels = self.prep_accessibility_osrm(pt)
-                self.polygons.append(polyg)
+            self.polygons = [i for i in pool.map(prep_access, pts)]
         except Exception as err:
             self.display_error(err, 1)
             return
@@ -742,13 +769,14 @@ class OSRM_access_Dialog(QtGui.QDialog, FORM_CLASS_a, TemplateOsrm):
         data_provider = isochrone_layer.dataProvider()
         # Add the features to the layer to display :
         features = []
+        levels = levels[1:]
         self.progress.setValue(8.5)
         for i, poly in enumerate(self.polygons):
             if not poly: continue
             ft = QgsFeature()
             ft.setGeometry(poly)
             ft.setAttributes(
-                [i, levels[i] - self.time_param['interval'], levels[i]])
+                [i, levels[i] - interval_time, levels[i]])
             features.append(ft)
         data_provider.addFeatures(features[::-1])
         self.nb_isocr += 1
@@ -756,11 +784,13 @@ class OSRM_access_Dialog(QtGui.QDialog, FORM_CLASS_a, TemplateOsrm):
 
         # Render the value :
         renderer = self.prepare_renderer(
-            levels, self.time_param['interval'], len(self.polygons))
+            levels, interval_time, len(self.polygons))
         isochrone_layer.setRendererV2(renderer)
         isochrone_layer.setLayerTransparency(25)
         self.iface.messageBar().clearWidgets()
         QgsMapLayerRegistry.instance().addMapLayer(isochrone_layer)
+
+        self.add_final_pts(pts)
         self.iface.setActiveLayer(isochrone_layer)
 
     @staticmethod
@@ -781,39 +811,6 @@ class OSRM_access_Dialog(QtGui.QDialog, FORM_CLASS_a, TemplateOsrm):
         expression = 'max'
         return QgsGraduatedSymbolRendererV2(expression, ranges)
 
-    def prep_accessibility_osrm(self, point):
-        """Make the regular grid of points, snap them and compute tables"""
-        self.progress.setValue(0.1)
-        max_time = self.time_param['max']
-        inter_time = self.time_param['interval']
-
-        url = ''.join(["http://", self.host, '/table/', self.profile, '/'])
-        bounds = get_search_frame(point, max_time)
-        coords_grid = make_regular_points(bounds, self.max_points)
-#        try:
-        times, origin_pt, snapped_dest_coords = \
-            fetch_table(url, [point], coords_grid)
-#        except Exception as err:
-#            print(err)
-#            self.display_error(err, 1)
-#            return
-
-        nb_inter = int(round(max_time / inter_time)) + 1
-        levels = [nb for nb in xrange(0, int(
-            round(np.nanmax(times)) + 1) + inter_time, inter_time)][:nb_inter]
-        times = (times[0] / 60.0).round(2)  # Round values in minutes
-
-        # Fetch MatPlotLib polygons from a griddata interpolation
-        collec_poly = interpolate_from_times(
-            times, np.array(snapped_dest_coords), levels)
-
-        # Convert MatPlotLib polygons to QgsGeometry polygons :
-        polygons = qgsgeom_from_mpl_collec(collec_poly.collections)
-
-        _ = levels.pop(0)
-
-        return polygons, levels
-
 
 class OSRM_batch_route_Dialog(QtGui.QDialog, FORM_CLASS_b, TemplateOsrm):
     def __init__(self, iface, parent=None):
@@ -828,8 +825,13 @@ class OSRM_batch_route_Dialog(QtGui.QDialog, FORM_CLASS_b, TemplateOsrm):
         self.pushButtonBrowse.clicked.connect(self.output_dialog_geo)
         self.pushButtonRun.clicked.connect(self.get_batch_route)
         self.comboBox_method.activated[str].connect(self.enable_functionnality)
+        self.comboBox_host.activated[str].connect(self.add_host)
         self.ComboBoxCsv.layerChanged.connect(self._set_layer_field_combo)
         self.nb_done = 0
+
+    def add_host(self, text):
+        if "Add an url" in text:
+            pass
 
     def _set_layer_field_combo(self, layer):
         self.FieldOriginX.setLayer(layer)
@@ -970,7 +972,7 @@ class OSRM_batch_route_Dialog(QtGui.QDialog, FORM_CLASS_b, TemplateOsrm):
                 "Output have to be saved and/or added to the canvas")
             return -1
         try:
-            self.host = check_host(self.lineEdit_host.text())
+            self.host = check_host(self.comboBox_host.currentText())
             profile = check_profile_name(self.lineEdit_profileName.text())
         except (ValueError, AssertionError) as err:
             self.iface.messageBar().pushMessage(
@@ -989,7 +991,7 @@ class OSRM_batch_route_Dialog(QtGui.QDialog, FORM_CLASS_b, TemplateOsrm):
                 "Something wrong append - No locations to request"
                 .format(self.filename))
             return -1
-        elif nb_queries > 500 and 'project-osrm' in self.host:
+        elif nb_queries > 20 and 'project-osrm' in self.host:
             QtGui.QMessageBox.information(
                 self.iface.mainWindow(), 'Error',
                 "Please, don't make heavy requests on the public API")
@@ -1003,7 +1005,6 @@ class OSRM_batch_route_Dialog(QtGui.QDialog, FORM_CLASS_b, TemplateOsrm):
                     "http://", self.host, "/route/", profile, "/",
                     "{},{};{},{}".format(xo, yo, xd, yd),
                     "?overview=full&steps=false&alternatives=false"])
-                print(url)
                 parsed = self.query_url(url)
             except Exception as err:
                 print(err)

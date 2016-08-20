@@ -47,9 +47,9 @@
    <property name="geometry">
     <rect>
      <x>30</x>
-     <y>360</y>
-     <width>388</width>
-     <height>101</height>
+     <y>370</y>
+     <width>391</width>
+     <height>91</height>
     </rect>
    </property>
    <layout class="QGridLayout" name="gridLayout">
@@ -76,6 +76,7 @@
       <property name="font">
        <font>
         <family>Arial</family>
+        <pointsize>9</pointsize>
         <kerning>true</kerning>
        </font>
       </property>
@@ -90,8 +91,14 @@
       </property>
      </widget>
     </item>
-    <item row="0" column="0" alignment="Qt::AlignHCenter">
+    <item row="0" column="0">
      <widget class="QCheckBox" name="check_add_layer">
+      <property name="maximumSize">
+       <size>
+        <width>210</width>
+        <height>16777215</height>
+       </size>
+      </property>
       <property name="font">
        <font>
         <family>Arial</family>
@@ -390,7 +397,7 @@
      <x>30</x>
      <y>264</y>
      <width>391</width>
-     <height>91</height>
+     <height>92</height>
     </rect>
    </property>
    <layout class="QGridLayout" name="gridLayout_3">
@@ -410,7 +417,7 @@
      <widget class="QLabel" name="label_11">
       <property name="font">
        <font>
-        <pointsize>10</pointsize>
+        <pointsize>9</pointsize>
        </font>
       </property>
       <property name="text">
@@ -429,26 +436,11 @@
      <widget class="QLabel" name="label_10">
       <property name="font">
        <font>
-        <pointsize>10</pointsize>
+        <pointsize>8</pointsize>
        </font>
       </property>
       <property name="text">
        <string>Host</string>
-      </property>
-     </widget>
-    </item>
-    <item row="0" column="1" colspan="2">
-     <widget class="QLineEdit" name="lineEdit_host">
-      <property name="font">
-       <font>
-        <pointsize>10</pointsize>
-        <weight>50</weight>
-        <italic>false</italic>
-        <bold>false</bold>
-       </font>
-      </property>
-      <property name="text">
-       <string>http://127.0.0.1:5000/</string>
       </property>
      </widget>
     </item>
@@ -468,12 +460,31 @@
      <widget class="QLabel" name="label_3">
       <property name="font">
        <font>
-        <pointsize>10</pointsize>
+        <pointsize>8</pointsize>
        </font>
       </property>
       <property name="text">
        <string>Profile</string>
       </property>
+     </widget>
+    </item>
+    <item row="0" column="1" colspan="2">
+     <widget class="QComboBox" name="comboBox_host">
+      <item>
+       <property name="text">
+        <string>http://127.0.0.1:5000/</string>
+       </property>
+      </item>
+      <item>
+       <property name="text">
+        <string>http://router.project-osrm.org/</string>
+       </property>
+      </item>
+      <item>
+       <property name="text">
+        <string>Add an url...</string>
+       </property>
+      </item>
      </widget>
     </item>
    </layout>

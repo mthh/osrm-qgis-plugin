@@ -694,7 +694,7 @@ class OSRM_access_Dialog(QtGui.QDialog, FORM_CLASS_a, TemplateOsrm):
         my_symb.setSize(1.2)
         center_pt_layer.setRendererV2(QgsSingleSymbolRendererV2(my_symb))
         features = []
-        for pt in pts:
+        for nb, pt in enumerate(pts):
             xo, yo = pt["point"]
             fet = QgsFeature()
             fet.setGeometry(QgsGeometry.fromPoint(QgsPoint(float(xo), float(yo))))

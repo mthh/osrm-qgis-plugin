@@ -57,7 +57,7 @@ help/build/
 # PyBuilder
 target/
 
-# PyQt generated files 
+# PyQt generated files
 resources.py
 
 # Others

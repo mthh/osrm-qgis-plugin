@@ -72,23 +72,19 @@
     </rect>
    </property>
    <layout class="QGridLayout" name="gridLayout">
-    <item row="1" column="0">
-     <widget class="QCheckBox" name="checkBox_instruction">
-      <property name="enabled">
-       <bool>false</bool>
-      </property>
+    <item row="4" column="0" alignment="Qt::AlignHCenter">
+     <widget class="QPushButton" name="pushButtonClear">
       <property name="font">
        <font>
         <family>Arial</family>
-        <pointsize>10</pointsize>
        </font>
       </property>
       <property name="text">
-       <string>Display routing instructions on a layer of points</string>
+       <string>Clear previous routes</string>
       </property>
      </widget>
     </item>
-    <item row="7" column="0">
+    <item row="6" column="0">
      <widget class="QPushButton" name="pushButtonTryIt">
       <property name="font">
        <font>
@@ -103,7 +99,7 @@
       </property>
      </widget>
     </item>
-    <item row="2" column="0">
+    <item row="1" column="0">
      <widget class="QCheckBox" name="checkBox_alternative">
       <property name="enabled">
        <bool>true</bool>
@@ -116,24 +112,11 @@
        </font>
       </property>
       <property name="text">
-       <string>Look for possible alternatives roads and display them
-(with/without instructions on point layer)</string>
+       <string>Display possible alternatives roads</string>
       </property>
      </widget>
     </item>
-    <item row="5" column="0" alignment="Qt::AlignHCenter">
-     <widget class="QPushButton" name="pushButtonClear">
-      <property name="font">
-       <font>
-        <family>Arial</family>
-       </font>
-      </property>
-      <property name="text">
-       <string>Clear previous routes</string>
-      </property>
-     </widget>
-    </item>
-    <item row="4" column="0" alignment="Qt::AlignHCenter">
+    <item row="3" column="0" alignment="Qt::AlignHCenter">
      <widget class="QPushButton" name="pushButtonReverse">
       <property name="maximumSize">
        <size>

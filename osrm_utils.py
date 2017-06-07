@@ -8,7 +8,7 @@ Utilities function used for the plugin.
 import numpy as np
 from itertools import islice
 from PyQt4.QtGui import QColor, QFileDialog, QDialog, QMessageBox, QProgressBar
-from PyQt4.QtCore import QSettings, QFileInfo, Qt  #, QObject, pyqtSignal, QRunnable, QThreadPool
+from PyQt4.QtCore import QSettings, QFileInfo, Qt
 from qgis.core import (
     QgsGeometry, QgsPoint, QgsCoordinateReferenceSystem, QgsProject,
     QgsCoordinateTransform, QgsSymbolV2, QgsMessageLog
@@ -27,6 +27,7 @@ __all__ = ['check_host', 'save_dialog', 'save_dialog_geo', 'prep_access',
            "check_profile_name", 'decode_geom', 'fetch_table',
            'decode_geom_to_pts', 'fetch_nearest',
            'make_regular_points', 'get_search_frame', 'get_isochrones_colors']
+
 
 def _chain(*lists):
     for li in lists:
@@ -52,6 +53,7 @@ def encode_to_polyline(pts):
         write_enc(pt[0] - pts[i][0])
         write_enc(pt[1] - pts[i][1])
     return ''.join([chr(i) for i in output])
+
 
 def prep_access(time_param):
     """Make the regular grid of points, snap them and compute tables"""
@@ -146,10 +148,12 @@ class TemplateOsrm(object):
         self.canvas.unsetMapTool(self.originEmit)
         self.lineEdit_xyO.setText(str(point))
 
+
 def check_profile_name(profile_name):
     assert len(profile_name) > 3
     assert "/" in profile_name
     return profile_name
+
 
 @lru_cache(maxsize=30)
 def check_host(url):
@@ -294,6 +298,7 @@ def chunk_it(it, size):
 def pts_ref(features):
     return [i[3] for i in features]
 
+
 def put_on_top(id_new_layer_top, id_old_layer_top):
     root = QgsProject.instance().layerTreeRoot()
 
@@ -324,6 +329,7 @@ def decode_geom(encoded_polyline):
         [QgsPoint(i[1], i[0]) for i
          in PolylineCodec().decode(encoded_polyline)])
 
+
 def fetch_table(url, coords_src, coords_dest):
     """
     Function wrapping OSRM 'table' function in order to get a matrix of
@@ -352,11 +358,10 @@ def fetch_table(url, coords_src, coords_dest):
             (or None if no destination coordinates where provided)
     """
     if not coords_dest:
-        query = ''.join([url,
-                         "polyline(",
-                         encode_to_polyline([(c[1], c[0]) for c in coords_src]),
-                         ")"])
-#                        ';'.join([','.join([str(coord[0]), str(coord[1])]) for coord in coords_src])])
+        query = ''.join(
+            [url, "polyline(",
+             encode_to_polyline([(c[1], c[0]) for c in coords_src]), ")"])
+#            ';'.join([','.join([str(coord[0]), str(coord[1])]) for coord in coords_src])])
     else:
         src_end = len(coords_src)
         dest_end = src_end + len(coords_dest)
@@ -430,7 +435,7 @@ def fetch_nearest(host, profile, coord):
     except Exception as err:
         print(err)
         return False
-    if not 'code' in parsed_json or not "Ok" in parsed_json['code']:
+    if 'code' not in parsed_json or "Ok" not in parsed_json['code']:
         return False
     else:
         return parsed_json["waypoints"][0]["location"]

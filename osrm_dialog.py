@@ -8,7 +8,7 @@
         begin                : 2015-09-29
         git sha              : $Format:%H$
         copyright            : (C) 2015 by mthh
-        email                : mthh@#!.org
+        email                : matthieu.viry@cnrs.fr
  ***************************************************************************/
 
 /***************************************************************************
@@ -98,13 +98,15 @@ class OSRM_DialogTSP(QtGui.QDialog, FORM_CLASS_tsp, TemplateOsrm):
         except (ValueError, AssertionError) as err:
             print(err)
             self.iface.messageBar().pushMessage(
-                "Error", "Please provide a valid non-empty URL and profile name", duration=10)
+                "Error",
+                "Please provide a valid non-empty URL and profile name",
+                duration=10)
             return
 
         query = ''.join(
             ["http://", self.host,
             "/trip/", profile, "/",
-            ";".join(["{},{}".format(coord[0], coord[1]) for coord in coords])])
+            ";".join(["{},{}".format(c[0], c[1]) for c in coords])])
 
         try:
             self.parsed = self.query_url(query)
@@ -151,12 +153,10 @@ class OSRM_DialogTSP(QtGui.QDialog, FORM_CLASS_tsp, TemplateOsrm):
         self.iface.zoomToActiveLayer()
         put_on_top(self.tsp_marker_lr.id(), tsp_route_layer.id())
         self.nb_route += 1
-
 #        if self.checkBox_instructions.isChecked():
 #            pr_instruct, instruct_layer = self.prep_instruction()
 #            QgsMapLayerRegistry.instance().addMapLayer(instruct_layer)
 #            self.iface.setActiveLayer(instruct_layer)
-
 
     def prepare_ordered_marker(self, coords, idx):
         """
@@ -187,8 +187,9 @@ class OSRM_DialogTSP(QtGui.QDialog, FORM_CLASS_tsp, TemplateOsrm):
         pal_lyr.readFromLayer(self.tsp_marker_lr)
         pal_lyr.enabled = True
         pal_lyr.fieldName = 'TSP_nb'
-        pal_lyr.placement= QgsPalLayerSettings.OverPoint
-        pal_lyr.setDataDefinedProperty(QgsPalLayerSettings.Size,True,True,'12','')
+        pal_lyr.placement = QgsPalLayerSettings.OverPoint
+        pal_lyr.setDataDefinedProperty(
+            QgsPalLayerSettings.Size, True, True, '12', '')
         pal_lyr.writeToLayer(self.tsp_marker_lr)
 
         self.tsp_marker_lr.setRendererV2(QgsSingleSymbolRendererV2(symbol))
@@ -261,55 +262,54 @@ class OSRMDialog(QtGui.QDialog, FORM_CLASS, TemplateOsrm):
         self.lineEdit_xyI.setText('')
         self.intermediate = []
         for layer in QgsMapLayerRegistry.instance().mapLayers():
-            if 'route_osrm' in layer \
-                    or 'instruction_osrm' in layer \
-                    or 'markers_osrm' in layer:
+            if 'route_osrm' in layer or 'markers_osrm' in layer:
+                    # or 'instruction_osrm' in layer \
                 QgsMapLayerRegistry.instance().removeMapLayer(layer)
         self.nb_route = 0
 
-    def prep_instruction(self, alt=None, provider=None,
-                         osrm_instruction_layer=None):
-        """
-        Prepare the instruction layer, each field corresponding to an OSRM
-        viaroute response field.
-        """
-        if not alt:
-            osrm_instruction_layer = QgsVectorLayer(
-                "Point?crs=epsg:4326&field=id:integer&field=alt:integer"
-                "&field=directions:integer(20)&field=street_name:string(254)"
-                "&field=length:integer(20)&field=position:integer(20)"
-                "&field=time:integer(20)&field=length:string(80)"
-                "&field=direction:string(20)&field=azimuth:float(10,4)",
-                "instruction_osrm{}".format(self.nb_route),
-                "memory")
-            liste_coords = decode_geom_to_pts(self.parsed['route_geometry'])
-            pts_instruct = pts_ref(self.parsed['route_instructions'])
-            instruct = self.parsed['route_instructions']
-            provider = osrm_instruction_layer.dataProvider()
-        else:
-            liste_coords = decode_geom_to_pts(
-                self.parsed['alternative_geometries'][alt - 1])
-            pts_instruct = pts_ref(
-                self.parsed['alternative_instructions'][alt - 1])
-            instruct = self.parsed['alternative_instructions'][alt - 1]
-
-        for nbi, pt in enumerate(pts_instruct):
-            fet = QgsFeature()
-            fet.setGeometry(
-                QgsGeometry.fromPoint(
-                    QgsPoint(liste_coords[pt][0], liste_coords[pt][1])))
-            fet.setAttributes([nbi, alt, instruct[nbi][0],
-                               instruct[nbi][1], instruct[nbi][2],
-                               instruct[nbi][3], instruct[nbi][4],
-                               instruct[nbi][5], instruct[nbi][6],
-                               instruct[nbi][7]])
-            provider.addFeatures([fet])
-        return provider, osrm_instruction_layer
+    # def prep_instruction(self, alt=None, provider=None,
+    #                      osrm_instruction_layer=None):
+    #     """
+    #     Prepare the instruction layer, each field corresponding to an OSRM
+    #     viaroute response field.
+    #     """
+    #     if not alt:
+    #         osrm_instruction_layer = QgsVectorLayer(
+    #             "Point?crs=epsg:4326&field=id:integer&field=alt:integer"
+    #             "&field=directions:integer(20)&field=street_name:string(254)"
+    #             "&field=length:integer(20)&field=position:integer(20)"
+    #             "&field=time:integer(20)&field=length:string(80)"
+    #             "&field=direction:string(20)&field=azimuth:float(10,4)",
+    #             "instruction_osrm{}".format(self.nb_route),
+    #             "memory")
+    #         liste_coords = decode_geom_to_pts(self.parsed['route_geometry'])
+    #         pts_instruct = pts_ref(self.parsed['route_instructions'])
+    #         instruct = self.parsed['route_instructions']
+    #         provider = osrm_instruction_layer.dataProvider()
+    #     else:
+    #         liste_coords = decode_geom_to_pts(
+    #             self.parsed['alternative_geometries'][alt - 1])
+    #         pts_instruct = pts_ref(
+    #             self.parsed['alternative_instructions'][alt - 1])
+    #         instruct = self.parsed['alternative_instructions'][alt - 1]
+    #
+    #     for nbi, pt in enumerate(pts_instruct):
+    #         fet = QgsFeature()
+    #         fet.setGeometry(
+    #             QgsGeometry.fromPoint(
+    #                 QgsPoint(liste_coords[pt][0], liste_coords[pt][1])))
+    #         fet.setAttributes([nbi, alt, instruct[nbi][0],
+    #                            instruct[nbi][1], instruct[nbi][2],
+    #                            instruct[nbi][3], instruct[nbi][4],
+    #                            instruct[nbi][5], instruct[nbi][6],
+    #                            instruct[nbi][7]])
+    #         provider.addFeatures([fet])
+    #     return provider, osrm_instruction_layer
 
     @staticmethod
     def make_OD_markers(nb, xo, yo, xd, yd, list_coords=None):
         """
-        Prepare the Origin (green), Destination (red) and Intalternative_geometriesermediates (grey)
+        Prepare the Origin (green), Destination (red) and Intermediates (grey)
         markers.
         """
         OD_layer = QgsVectorLayer(
@@ -366,7 +366,9 @@ class OSRMDialog(QtGui.QDialog, FORM_CLASS, TemplateOsrm):
         except (ValueError, AssertionError) as err:
             print(err)
             self.iface.messageBar().pushMessage(
-                "Error", "Please provide a valid non-empty URL and profile name", duration=10)
+                "Error",
+                "Please provide a valid non-empty URL and profile name",
+                duration=10)
             return
 
         origin = self.lineEdit_xyO.text()
@@ -392,10 +394,10 @@ class OSRMDialog(QtGui.QDialog, FORM_CLASS, TemplateOsrm):
                 interm = eval(''.join(['[', interm, ']']))
                 tmp = ';'.join(
                     ['{},{}'.format(xi, yi) for xi, yi in interm])
-                url = ''.join(["http://", self.host, "/route/", profile, "/",
-                               "{},{};".format(xo, yo), tmp, ";{},{}".format(xd, yd),
-                               "?overview=full&steps={}&alternatives={}".format(
-                        str(self.checkBox_instruction.isChecked()).lower(),
+                url = ''.join([
+                    "http://", self.host, "/route/", profile, "/",
+                    "{},{};".format(xo, yo), tmp, ";{},{}".format(xd, yd),
+                    "?overview=full&alternatives={}".format(
                         str(self.checkBox_alternative.isChecked()).lower())])
             except:
                 self.iface.messageBar().pushMessage(
@@ -404,10 +406,8 @@ class OSRMDialog(QtGui.QDialog, FORM_CLASS, TemplateOsrm):
             url = ''.join([
                 "http://", self.host, "/route/", profile, "/",
                 "polyline(", encode_to_polyline([(yo, xo), (yd, xd)]), ")",
-#                "{},{};{},{}".format(xo, yo, xd, yd),
-                "?overview=full&steps={}&alternatives={}"
-                .format(str(self.checkBox_instruction.isChecked()).lower(),
-                       str(self.checkBox_alternative.isChecked()).lower())])
+                "?overview=full&alternatives={}"
+                .format(str(self.checkBox_alternative.isChecked()).lower())])
 
         try:
             self.parsed = self.query_url(url)
@@ -416,7 +416,7 @@ class OSRMDialog(QtGui.QDialog, FORM_CLASS, TemplateOsrm):
             self.display_error(err, 1)
             return
 
-        if not 'Ok' in self.parsed['code']:
+        if 'Ok' not in self.parsed['code']:
             self.display_error(self.parsed['code'], 1)
             return
 
@@ -648,7 +648,7 @@ class OSRM_access_Dialog(QtGui.QDialog, FORM_CLASS_a, TemplateOsrm):
         self.lineEdit_xyO.setText('')
         self.nb_isocr = 0
         for layer in QgsMapLayerRegistry.instance().mapLayers():
-            if 'isochrone_osrm' in layer:
+            if 'isochrone_osrm' in layer or 'isochrone_center':
                 QgsMapLayerRegistry.instance().removeMapLayer(layer)
 
     def store_intermediate_acces(self, point):
@@ -674,8 +674,8 @@ class OSRM_access_Dialog(QtGui.QDialog, FORM_CLASS_a, TemplateOsrm):
                 pts = [pts]
             else:
                 assert all([isinstance(pt, tuple) for pt in pts])
-                assert all([isinstance(coord[0], (float, int))
-                            & isinstance(coord[1], (float, int))
+                assert all([isinstance(coord[0], (float, int)) &
+                             isinstance(coord[1], (float, int))
                             for coord in pts])
             return pts
         except Exception as err:
@@ -688,7 +688,7 @@ class OSRM_access_Dialog(QtGui.QDialog, FORM_CLASS_a, TemplateOsrm):
     def add_final_pts(self, pts):
         center_pt_layer = QgsVectorLayer(
             "Point?crs=epsg:4326&field=id_center:integer&field=role:string(80)",
-            "center_{}".format(self.nb_isocr), "memory")
+            "isochrone_center_{}".format(self.nb_isocr), "memory")
         my_symb = QgsSymbolV2.defaultSymbol(0)
         my_symb.setColor(QtGui.QColor("#e31a1c"))
         my_symb.setSize(1.2)
@@ -697,7 +697,8 @@ class OSRM_access_Dialog(QtGui.QDialog, FORM_CLASS_a, TemplateOsrm):
         for nb, pt in enumerate(pts):
             xo, yo = pt["point"]
             fet = QgsFeature()
-            fet.setGeometry(QgsGeometry.fromPoint(QgsPoint(float(xo), float(yo))))
+            fet.setGeometry(QgsGeometry.fromPoint(
+                QgsPoint(float(xo), float(yo))))
             fet.setAttributes([nb, 'Origin'])
             features.append(fet)
         center_pt_layer.dataProvider().addFeatures(features)
@@ -744,7 +745,8 @@ class OSRM_access_Dialog(QtGui.QDialog, FORM_CLASS_a, TemplateOsrm):
         self.polygons = []
 
         pts = [{"point": pt, "max": max_time, "levels": levels,
-                "host": self.host, "profile": self.profile, "max_points": self.max_points}
+                "host": self.host, "profile": self.profile,
+                "max_points": self.max_points}
                 for pt in pts]
 
         pool = ThreadPool(processes=4 if len(pts) >= 4 else len(pts))
@@ -759,7 +761,8 @@ class OSRM_access_Dialog(QtGui.QDialog, FORM_CLASS_a, TemplateOsrm):
             self.polygons = self.polygons[0]
         else:
             self.polygons = np.array(self.polygons).transpose().tolist()
-            self.polygons = [QgsGeometry.unaryUnion(polys) for polys in self.polygons]
+            self.polygons = \
+                [QgsGeometry.unaryUnion(polys) for polys in self.polygons]
 
         isochrone_layer = QgsVectorLayer(
             "MultiPolygon?crs=epsg:4326&field=id:integer"
@@ -772,7 +775,8 @@ class OSRM_access_Dialog(QtGui.QDialog, FORM_CLASS_a, TemplateOsrm):
         levels = levels[1:]
         self.progress.setValue(8.5)
         for i, poly in enumerate(self.polygons):
-            if not poly: continue
+            if not poly:
+                continue
             ft = QgsFeature()
             ft.setGeometry(poly)
             ft.setAttributes(

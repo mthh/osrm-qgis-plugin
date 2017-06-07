@@ -1,9 +1,5 @@
 **OSRM plugin for QGIS**
 
-**Refactored to match new OSRM API (> v5.0)**
-
-**Version on http://plugins.qgis.org/plugins/OSRM/ might not be up-to-date or might contain bugs**
-
 
 Overview
 ========
@@ -11,7 +7,9 @@ Tiny `QGIS`_ plug-in allowing to retrieve and display data from an (ideally loca
 
 This plug-in is in its early stage of development and the code is hosted `on github`_.
 
-Current version : 0.0.1b
+**Only targets OSRM > v5.0 (API introduced around April 2016)**
+
+Current plugin version : 0.1.0
 
 Functionality
 =============

@@ -230,18 +230,12 @@
     <string>Clear previous results</string>
    </property>
   </widget>
-  <zorder>pushButton_about</zorder>
-  <zorder>close_button_box</zorder>
-  <zorder>pushButton_display</zorder>
-  <zorder>layoutWidget</zorder>
-  <zorder>pushButton_clear</zorder>
-  <zorder>label_subtitle</zorder>
  </widget>
  <customwidgets>
   <customwidget>
    <class>QgsMapLayerComboBox</class>
    <extends>QComboBox</extends>
-   <header>qgsmaplayercombobox.h</header>
+   <header>qgis.gui</header>
   </customwidget>
  </customwidgets>
  <resources/>

@@ -648,7 +648,7 @@ class OSRM_access_Dialog(QtGui.QDialog, FORM_CLASS_a, TemplateOsrm):
         self.lineEdit_xyO.setText('')
         self.nb_isocr = 0
         for layer in QgsMapLayerRegistry.instance().mapLayers():
-            if 'isochrone_osrm' in layer or 'isochrone_center':
+            if 'isochrone_osrm' in layer or 'isochrone_center' in layer:
                 QgsMapLayerRegistry.instance().removeMapLayer(layer)
 
     def store_intermediate_acces(self, point):
@@ -741,7 +741,7 @@ class OSRM_access_Dialog(QtGui.QDialog, FORM_CLASS_a, TemplateOsrm):
             max_time + 1) + interval_time, interval_time)][:nb_inter])
 
         self.make_prog_bar()
-        self.max_points = 750 if len(pts) == 1 else 250
+        self.max_points = 1500 if len(pts) == 1 else 500
         self.polygons = []
 
         pts = [{"point": pt, "max": max_time, "levels": levels,
